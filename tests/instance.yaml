@@ -1,0 +1,33 @@
+# Instance spec of the boot test (format: docs/spec.md of the keel
+# repository). IPv6 only, from the bridge; no certificate request, no
+# network access at first boot; the root password is a file the test
+# writes into the rootfs before booting.
+version: 1
+
+instance:
+  hostname: core
+  fqdn: core.example.org
+
+network:
+  managed_by: host
+  interfaces:
+    eth0:
+      ipv6:
+        method: auto
+
+tls:
+  acme:
+    enabled: false
+
+secrets:
+  root_password:
+    file: /etc/keel/secrets/root_password
+
+hub:
+  api_key: skip
+
+security:
+  alerts: skip
+  updates: skip
+
+first_login_wizard: false
