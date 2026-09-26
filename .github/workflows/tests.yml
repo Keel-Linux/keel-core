@@ -14,17 +14,24 @@ jobs:
     with:
       threshold: 100
   appliance:
-    # The build and boot test (org-plan section 1): bt-layer, keel verify,
-    # tests/boot-test.sh on the self-hosted LXC runner. test-appliance.yml
-    # targets the labels "self-hosted, keel-lxc"; a job aimed at a label no
-    # runner carries stays queued until GitHub cancels it after 24 hours, so
-    # the reusable workflow's contract is that callers gate on the
-    # organization variable KEEL_LXC_RUNNER (docs/ci-cd.md section 5 of the
-    # keel repository). While it is "false" (no runner registered) this job
-    # is skipped and produces no check. Once the maintainer sets it to "true"
-    # the check "appliance / build-and-boot" appears and is added to the
-    # protection rule of master (the job id is part of that check name).
+    # The boot test (org-plan section 1): the core layer is fetched from
+    # https://mirror.keellinux.org/layers, verified, assembled into a scratch
+    # rootfs, booted in LXC and checked by tests/boot-test.sh, on the
+    # self-hosted runner. Nothing is built there; the build host publishes
+    # the layer (docs/releases-host.md of the keel repository).
+    #
+    # test-appliance.yml targets the labels "self-hosted, keel-lxc"; a job
+    # aimed at a label no runner carries stays queued until GitHub cancels it
+    # after 24 hours, so the reusable workflow's contract is that callers gate
+    # on the organization variable KEEL_LXC_RUNNER (docs/ci-cd.md section 5 of
+    # the keel repository). While it is "false" this job is skipped and
+    # produces no check. With it "true" the check
+    # "appliance / build-and-boot" appears and is required on master (the job
+    # id is part of that check name).
     if: vars.KEEL_LXC_RUNNER == 'true'
     uses: keel-linux/.github/.github/workflows/test-appliance.yml@main
     with:
       appliance: core
+      # core is the rootfs layer at the bottom of every chain.
+      parent: ""
+      timeout: 60

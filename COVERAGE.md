@@ -37,23 +37,26 @@ be printed twice on a console login.
 
 ## What "test" means here
 
-Org-plan section 1: the recipe builds on the runner (`bt-layer`), the
-result boots in an LXC container, its first boot completes headless from
-an instance spec, and the machine answers over IPv6 and matches the spec.
-Coverage of an appliance recipe is that test passing. It is the
+Org-plan section 1: the layer boots in an LXC container, its first boot
+completes headless from an instance spec, and the machine matches the
+spec. Coverage of an appliance recipe is that test passing. It is the
 acceptance test of decision 0004 item 4 and it does not count toward a
 unit number.
 
-1. **Build.** `bt-layer core` builds the layer on the self-hosted LXC
-   runner; `keel verify` checks its manifest (`test-appliance.yml`).
-2. **Boot.** `tests/boot-test.sh core` assembles the chain into an LXC
-   rootfs, installs `tests/instance.yaml` (IPv6 from the bridge, ACME off,
-   no network at first boot, root password from a file it writes), starts
-   the container, waits for a global IPv6 address, then for the first boot
-   to finish (confconsole's usage screen on the console, or SSH answering
-   on port 22 over IPv6), and runs `keel diff --root <rootfs>` against the
-   spec: exit 0 or 13 (no drift) passes. `tests/README.md` documents the
-   run by hand on the build host.
+1. **Fetch and verify.** The layer is built and published by the build
+   host; `test-appliance.yml` pulls it from
+   `https://mirror.keellinux.org/layers` over IPv6 and runs `keel verify`,
+   which passes on 0, 8 (hash file present, not signed) and 9, and fails
+   on 6 and 7. The self-hosted runner has no fab, deck or buildtasks and
+   builds nothing.
+2. **Boot.** `tests/boot-test.sh core` assembles the chain into a scratch
+   LXC rootfs, marks it as a container, installs `tests/instance.yaml`
+   (IPv6 from the bridge, ACME off, root password from a file it writes)
+   and renders it into `etc/inithooks.conf` so the first boot is headless,
+   starts the container, waits for a global IPv6 address, then for
+   `RUN_FIRSTBOOT=false` plus confconsole or an SSH banner, and runs
+   `keel diff --root <rootfs>` against the spec: exit 0 or 13 (no drift)
+   passes. `tests/README.md` documents the run by hand.
 3. **Unit tests of the test.** The boot test is project-authored shell,
    so it follows decision 0004: the logic (argument parsing, address
    discovery from `lxc-info`, waiting with a deadline, readiness checks,
@@ -68,12 +71,12 @@ unit number.
 | What | Measured | How |
 | --- | --- | --- |
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
-| Boot test | not run yet: no self-hosted runner is registered (`KEEL_LXC_RUNNER` is `false`), and the M0 image is built with upstream's inithooks from the archive, so a headless first boot from the spec depends on the organization's inithooks package (hook `00declarative`) being in the image | `tests/boot-test.sh`, `test-appliance.yml` |
-| `tests/lib/boot-test-lib.sh` | 100 percent (97 of 97 lines, 26 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: pull 3 s, assemble 13 s, boot and first boot 10 s, `keel diff` 8 same, 0 drift, 1 unknown (`instance.fqdn`, which inspect cannot read offline, exit 13). Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
+| `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `overlay/usr/lib/keel/banner.sh` | 100 percent (102 of 102 lines, 48 bats tests, kcov 43), measured on 2026-09-26 with the console banner | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of both project-authored files (74 bats tests in all); it
+measured number of both project-authored files (78 bats tests in all); it
 is only ever raised. `tests/coverage.sh` measures each library against the
 bats file that exercises it and fails when any one is below the
 threshold.
@@ -86,21 +89,22 @@ hosted runners, on every pull request and push to master. `appliance`
 calls `test-appliance.yml` with `appliance: core` and is gated on the
 organization variable `KEEL_LXC_RUNNER`, as the reusable workflow requires
 (a job targeting the `keel-lxc` label with no such runner stays queued for
-24 hours). While the variable is `false` the job is skipped and no check
-appears, so branch protection requires `tests / coverage` alone. When the
-runner is registered and the variable set to `true`, the check
-`appliance / build-and-boot` appears on the next push and is added to the
-protection rule; that is the tightening step.
+24 hours). The variable is `true` since 2026-09-26, so both checks appear
+on every pull request and both are required on `master`:
+`tests / coverage` and `appliance / build-and-boot`.
 
 ## Plan
 
-1. Register the LXC runner (docs/ci-cd.md section 6 of the keel
-   repository), set `KEEL_LXC_RUNNER` to `true`, let the boot test run once
-   on master, add `appliance / build-and-boot` to the protection rule.
-2. Until the image carries the organization's inithooks, the first boot of
-   the M0 image is interactive and the test times out on step 5 with the
-   inithooks log printed; the fix is on the packaging side (the inithooks
-   fork built by `build-deb.yml` and installed by the plan), not here.
+1. The layer still carries upstream's inithooks, which has no
+   `00declarative` hook, so the spec reaches the first boot as
+   `/etc/inithooks.conf` rendered by `keel spec apply` before the container
+   starts, not as a spec the machine reads itself. When the inithooks fork
+   is in the layer, that rendering step goes away and `tests/instance.yaml`
+   becomes the input rather than a description of the result; the two
+   values marked in that file (`ipv6.method`, `security.updates`) are the
+   ones to revisit then.
+2. Fail the boot test on the three hooks that report an error, once each
+   has been diagnosed: `15regen-sslcert`, `29tagid`, `95secupdates`.
 3. The recipe is no longer byte-identical to upstream: the console banner
    of 2026-09-26 is the first project-authored addition to the overlay.
    The M0 gate reference stands at 24c82ee, the commit both trees were

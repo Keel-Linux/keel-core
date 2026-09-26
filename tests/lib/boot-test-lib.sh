@@ -14,6 +14,7 @@ BT_DEFAULT_CACHE_DIR=/var/cache/keel/layers
 BT_DEFAULT_LXC_PATH=/var/lib/lxc
 BT_SSH_PORT=22
 BT_PASSWORD_LENGTH=24
+BT_RANDOM_BYTES=1024
 # Where the first boot reads the instance description. inithooks reads
 # etc/inithooks.yaml (hook 00declarative), keel reads etc/keel/instance.yaml;
 # the final name is a maintainer decision (brief section 11), so the test
@@ -32,9 +33,12 @@ options:
   --timeout SECONDS     give up after this long per wait (default $BT_DEFAULT_TIMEOUT)
   --interval SECONDS    poll interval (default $BT_DEFAULT_INTERVAL)
   --bridge NAME         bridge the container joins (default $BT_DEFAULT_BRIDGE)
-  --layers-dir DIR      where bt-layer wrote the layers (default $BT_DEFAULT_LAYERS_DIR)
+  --layers-dir DIR|URL  where the layers are published: a directory, or an
+                        http(s) URL such as https://mirror.keellinux.org/layers
+                        (default $BT_DEFAULT_LAYERS_DIR)
   --cache-dir DIR       keel layer cache (default $BT_DEFAULT_CACHE_DIR)
   --lxc-path DIR        lxcpath for the test container (default $BT_DEFAULT_LXC_PATH)
+  --name NAME           container name (default keel-APPLIANCE-boot-test)
   --spec FILE           instance spec (default tests/instance.yaml)
   --keep                leave the container running for inspection
   -h, --help            this text
@@ -54,6 +58,12 @@ bt_container_name() {
     printf 'keel-%s-boot-test\n' "$1"
 }
 
+bt_is_container_name() {
+    # What LXC accepts and what the CI cleanup command allows: lower case
+    # letters, digits, dot and dash, starting with a letter or a digit.
+    [[ ${1-} =~ ^[a-z0-9][a-z0-9.-]*$ ]]
+}
+
 # Sets BT_APPLIANCE, BT_TIMEOUT, BT_INTERVAL, BT_BRIDGE, BT_LAYERS_DIR,
 # BT_CACHE_DIR, BT_LXC_PATH, BT_SPEC, BT_KEEP, BT_NAME and BT_ROOTFS.
 # Returns 0 when parsed, 2 after printing the usage, 1 on a bad argument
@@ -66,6 +76,7 @@ bt_parse_args() {
     BT_LAYERS_DIR=$BT_DEFAULT_LAYERS_DIR
     BT_CACHE_DIR=$BT_DEFAULT_CACHE_DIR
     BT_LXC_PATH=$BT_DEFAULT_LXC_PATH
+    BT_NAME=""
     BT_SPEC=""
     BT_KEEP=0
     while [ $# -gt 0 ]; do
@@ -78,7 +89,7 @@ bt_parse_args() {
                 [ "$1" = --timeout ] && BT_TIMEOUT=$2 || BT_INTERVAL=$2
                 shift
                 ;;
-            --bridge|--layers-dir|--cache-dir|--lxc-path|--spec)
+            --bridge|--layers-dir|--cache-dir|--lxc-path|--name|--spec)
                 [ -n "${2-}" ] || {
                     echo "boot-test: $1 needs a value" >&2
                     return 1
@@ -88,6 +99,7 @@ bt_parse_args() {
                     --layers-dir) BT_LAYERS_DIR=$2 ;;
                     --cache-dir) BT_CACHE_DIR=$2 ;;
                     --lxc-path) BT_LXC_PATH=$2 ;;
+                    --name) BT_NAME=$2 ;;
                     --spec) BT_SPEC=$2 ;;
                 esac
                 shift
@@ -119,7 +131,11 @@ bt_parse_args() {
         echo "boot-test: '$BT_APPLIANCE' is not an appliance name (lower case, no keel- prefix)" >&2
         return 1
     fi
-    BT_NAME=$(bt_container_name "$BT_APPLIANCE")
+    BT_NAME=${BT_NAME:-$(bt_container_name "$BT_APPLIANCE")}
+    if ! bt_is_container_name "$BT_NAME"; then
+        echo "boot-test: '$BT_NAME' is not a container name (lower case, digits, dot, dash)" >&2
+        return 1
+    fi
     BT_ROOTFS=$BT_LXC_PATH/$BT_NAME/rootfs
     return 0
 }
@@ -214,9 +230,26 @@ bt_spec_targets() {
     done
 }
 
+bt_spec_in_rootfs() {
+    # bt_spec_in_rootfs SPEC ROOTFS: the spec with its secret references
+    # pointed inside ROOTFS, printed on stdout. `keel spec apply` runs on
+    # the host and resolves a secret path against the host, so the copy it
+    # reads has to name the files this test wrote into the container.
+    sed -E "s#^([[:space:]]*file:[[:space:]]*)(/etc/keel/secrets/)#\1$2\2#" "$1"
+}
+
 bt_random_password() {
-    tr -dc 'A-Za-z0-9' < "${BT_RANDOM_SOURCE:-/dev/urandom}" | head -c "$BT_PASSWORD_LENGTH"
-    echo
+    # A fixed block is read first and filtered afterwards. The other way
+    # round, "tr < source | head -c N", leaves tr killed by SIGPIPE when
+    # head has its N characters, and the set -o pipefail of boot-test.sh
+    # turns that into exit 141 before the container is ever started.
+    local pool source=${BT_RANDOM_SOURCE:-/dev/urandom}
+    pool=$(head -c "$BT_RANDOM_BYTES" "$source" | LC_ALL=C tr -dc 'A-Za-z0-9')
+    if [ "${#pool}" -lt "$BT_PASSWORD_LENGTH" ]; then
+        echo "boot-test: $source gave only ${#pool} usable characters" >&2
+        return 1
+    fi
+    printf '%s\n' "${pool:0:BT_PASSWORD_LENGTH}"
 }
 
 bt_diff_verdict() {

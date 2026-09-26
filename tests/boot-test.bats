@@ -41,7 +41,7 @@ stub_lxc_info() {
 
 @test "parse_args: every option is read" {
     bt_parse_args --timeout 60 --interval 2 --bridge lxcbr0 --layers-dir /l \
-        --cache-dir /c --lxc-path /x --spec /s.yaml --keep lamp
+        --cache-dir /c --lxc-path /x --name lamp-run-7 --spec /s.yaml --keep lamp
     [ "$BT_APPLIANCE" = lamp ]
     [ "$BT_TIMEOUT" = 60 ]
     [ "$BT_INTERVAL" = 2 ]
@@ -51,7 +51,24 @@ stub_lxc_info() {
     [ "$BT_LXC_PATH" = /x ]
     [ "$BT_SPEC" = /s.yaml ]
     [ "$BT_KEEP" = 1 ]
-    [ "$BT_ROOTFS" = /x/keel-lamp-boot-test/rootfs ]
+    [ "$BT_NAME" = lamp-run-7 ]
+    [ "$BT_ROOTFS" = /x/lamp-run-7/rootfs ]
+}
+
+@test "parse_args: --name is checked as a container name" {
+    run bt_parse_args core --name "Run 7"
+    [ "$status" -eq 1 ]
+    [[ $output == *"is not a container name"* ]]
+    run bt_parse_args core --name -lead
+    [ "$status" -eq 1 ]
+}
+
+@test "is_container_name" {
+    bt_is_container_name keel-core-boot-test-36255612491-1
+    bt_is_container_name 7
+    run ! bt_is_container_name "keel core"
+    run ! bt_is_container_name -x
+    run ! bt_is_container_name ""
 }
 
 @test "parse_args: the appliance is required" {
@@ -229,12 +246,28 @@ never() { return 1; }
     [ "$output" = $'/r/etc/keel/instance.yaml\n/r/etc/inithooks.yaml' ]
 }
 
+@test "spec_in_rootfs: secret references are pointed inside the rootfs" {
+    printf 'secrets:\n  root_password:\n    file: /etc/keel/secrets/root_password\ntls:\n  acme:\n    enabled: false\n' > "$STUBS/spec"
+    output=$(bt_spec_in_rootfs "$STUBS/spec" /r/rootfs)
+    [[ $output == *"file: /r/rootfs/etc/keel/secrets/root_password"* ]]
+    [[ $output == *"enabled: false"* ]]
+    [[ $output != *"file: /etc/keel"* ]]
+}
+
 @test "random_password: 24 alphanumeric characters from the random source" {
     output=$(bt_random_password)
     [[ $output =~ ^[A-Za-z0-9]{24}$ ]]
     printf 'ab!!cd%%%%efghijklmnopqrstuvwxyz0123456789' > "$STUBS/random"
     output=$(BT_RANDOM_SOURCE=$STUBS/random bt_random_password)
     [ "$output" = abcdefghijklmnopqrstuvwx ]
+}
+
+@test "random_password: a source too poor to fill the password fails loudly" {
+    printf '!!!!short!!!!' > "$STUBS/poor"
+    BT_RANDOM_SOURCE="$STUBS/poor"
+    run bt_random_password
+    [ "$status" -eq 1 ]
+    [[ $output == *"gave only 5 usable characters"* ]]
 }
 
 @test "diff_verdict: 0 and 13 pass, everything else fails with a message" {
