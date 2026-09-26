@@ -1,3 +1,26 @@
+Keel Linux Core
+===============
+
+This is the core appliance of `Keel Linux`_: the base system every other
+Keel appliance is layered on, compatible with TurnKey Linux appliances. It
+is a fork of `turnkeylinux-apps/core`_ with its full history; upstream is
+kept as the remote ``upstream`` and this repository tracks its ``master``.
+The recipe (``Makefile``, ``plan/main``, ``conf.d``, ``overlay``) builds the
+same image as upstream, as checked by the M0 gate of the project, and the
+project's own changes are kept small and reviewable on top of it.
+
+Upstream declares no license for this recipe. The project's own
+contributions to this repository are licensed GPL-3.0-or-later (``LICENSE``;
+project decision 0007); upstream content keeps whatever terms upstream gives
+it. Test state and plan: ``COVERAGE.md``. The organization guidelines that
+every Keel repository follows are at
+https://keel-linux.github.io/guidelines.html.
+
+.. _Keel Linux: https://github.com/keel-linux
+.. _turnkeylinux-apps/core: https://github.com/turnkeylinux-apps/core
+
+The upstream description follows.
+
 TurnKey Core - Debian GNU/Linux with Batteries Included
 =======================================================
 
