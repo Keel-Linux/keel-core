@@ -11,11 +11,29 @@ Actions and is a required status on the default branch).
 An appliance recipe, not a program: `Makefile` (2 lines: the Webmin
 firewall ports and the include of `turnkey.mk` from common), `plan/main`
 (1 line: `#include <turnkey/base>`), `conf.d/main` (a no-op: core needs no
-post-package configuration), `overlay/etc/confconsole/services.txt` (the
-lines confconsole shows on its usage screen) and documentation. Every
-package, hook and conf script of the image comes from `common`, `fab` and
-the Debian and TurnKey archives, each measured in its own repository.
-There is nothing to unit test in the recipe itself.
+post-package configuration), the overlay and documentation. Every package,
+hook and conf script of the image comes from `common`, `fab` and the
+Debian and TurnKey archives, each measured in its own repository.
+
+The overlay carries the appliance's own text and, since the console
+banner, its first piece of project-authored shell:
+
+| Path | What it is | Measured |
+| --- | --- | --- |
+| `etc/confconsole/services.txt` | the lines confconsole shows on its usage screen | data |
+| `etc/keel/banner.txt`, `etc/keel/banner-small.txt` | the mark in ASCII, 38 by 19 and 23 by 11, installed unmodified from the design system (exports of `keel-mark.svg`; a change is a re-export, never an edit of the characters) | data |
+| `usr/lib/keel/banner.sh` | the banner renderer, pure functions (decision 0004) | 100 percent, see below |
+| `etc/update-motd.d/00-keel-banner` | the thin main: terminal size, version file, `ip` probe, one call into the library | the LXC run |
+
+The banner is a drop-in named before the files `common`
+(`conf/turnkey.d/motd`) writes, so every word upstream prints keeps its
+place and the mark is added above it. That directory is what pam_motd runs
+at an interactive login, over SSH and on the container console alike; the
+other console, tty1 running confconsole from inithooks, never reaches
+pam_motd and gets the mark from the confconsole repository, from these
+same two files. `/etc/issue` was not used: getty prints it before the
+login prompt, so the mark would scroll away with each failed attempt and
+be printed twice on a console login.
 
 ## What "test" means here
 
@@ -52,9 +70,13 @@ unit number.
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | not run yet: no self-hosted runner is registered (`KEEL_LXC_RUNNER` is `false`), and the M0 image is built with upstream's inithooks from the archive, so a headless first boot from the spec depends on the organization's inithooks package (hook `00declarative`) being in the image | `tests/boot-test.sh`, `test-appliance.yml` |
 | `tests/lib/boot-test-lib.sh` | 100 percent (97 of 97 lines, 26 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/banner.sh` | 100 percent (102 of 102 lines, 48 bats tests, kcov 43), measured on 2026-09-26 with the console banner | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of the one project-authored file; it is only ever raised.
+measured number of both project-authored files (74 bats tests in all); it
+is only ever raised. `tests/coverage.sh` measures each library against the
+bats file that exercises it and fails when any one is below the
+threshold.
 
 ## Gate
 
@@ -79,10 +101,14 @@ protection rule; that is the tightening step.
    the M0 image is interactive and the test times out on step 5 with the
    inithooks log printed; the fix is on the packaging side (the inithooks
    fork built by `build-deb.yml` and installed by the plan), not here.
-3. The recipe stays byte-identical to upstream until the M0 gate no longer
-   depends on it. Any later change to `plan/main`, `conf.d` or the
-   `Makefile` comes with the boot test green and, for a conf script, the
-   decision 0004 treatment.
+3. The recipe is no longer byte-identical to upstream: the console banner
+   of 2026-09-26 is the first project-authored addition to the overlay.
+   The M0 gate reference stands at 24c82ee, the commit both trees were
+   built from, and a rebuild now differs by exactly the four overlay
+   files listed above, all of them new paths, none of them an edit of an
+   upstream file. `plan/main`, `conf.d` and the `Makefile` are still
+   untouched. Any later change to those three comes with the boot test
+   green and, for a conf script, the decision 0004 treatment.
 4. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
    collapse to one when the maintainer settles the name (brief section
    11); `BT_SPEC_PATHS` in the library and its test change in one line.

@@ -15,8 +15,13 @@ completes headless from an instance spec, and the machine matches the spec.
   functions with no side effects, per decision 0004.
 - `boot-test.bats`: unit tests of the library. `lxc-info` is a stub first in
   `PATH`; the clock and `sleep` are functions. No root, no network, no LXC.
-- `coverage.sh`: runs the bats file under kcov and fails when the library is
-  below `COVERAGE_THRESHOLD` (default 95).
+- `banner.bats`: unit tests of `overlay/usr/lib/keel/banner.sh`, the console
+  banner renderer of the appliance overlay (the version string, the title,
+  the address block, which mark fits, the whole block). The mark files are
+  the ones the overlay installs and the addresses are arguments, so nothing
+  here needs a terminal, a network or root.
+- `coverage.sh`: runs each bats file under kcov and fails when any measured
+  library is below `COVERAGE_THRESHOLD` (default 95).
 - `instance.yaml`: the spec the container boots from. IPv6 only, address
   from the bridge, no certificate request, no network at first boot.
 
@@ -24,11 +29,28 @@ completes headless from an instance spec, and the machine matches the spec.
 
 Debian packages `bats` (1.11) and `kcov` (43); no root:
 
-    bats tests/boot-test.bats
-    COVERAGE_THRESHOLD=95 tests/coverage.sh
+    bats tests/boot-test.bats tests/banner.bats
+    COVERAGE_THRESHOLD=100 tests/coverage.sh
 
-`COVERAGE_DIR=coverage tests/coverage.sh` keeps the kcov report;
-`coverage/index.html` shows the executed lines.
+`COVERAGE_DIR=coverage tests/coverage.sh` keeps the kcov reports, one
+directory per measured library; each `index.html` shows the executed
+lines.
+
+## The banner by hand
+
+The renderer is sourceable, so the block can be printed without an
+appliance. From the repository root:
+
+    KEEL_BANNER_MARK=overlay/etc/keel/banner.txt \
+    KEEL_BANNER_MARK_SMALL=overlay/etc/keel/banner-small.txt \
+    bash -c 'source overlay/usr/lib/keel/banner.sh
+             keel_banner_render 40 100 "Keel Linux core" 19.0-trixie-amd64 \
+                 2001:db8:1::10 192.0.2.10'
+
+The first two arguments are the rows and columns of the terminal: 24 rows
+falls back to `banner-small.txt`, and a terminal narrower than the small
+mark drops the mark and keeps the addresses. On an appliance the same
+block comes from `/etc/update-motd.d/00-keel-banner` at every login.
 
 ## The boot test by hand, on the build host
 
