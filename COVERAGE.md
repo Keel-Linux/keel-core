@@ -100,9 +100,8 @@ on every pull request and both are required on `master`:
    `/etc/inithooks.conf` rendered by `keel spec apply` before the container
    starts, not as a spec the machine reads itself. When the inithooks fork
    is in the layer, that rendering step goes away and `tests/instance.yaml`
-   becomes the input rather than a description of the result; the two
-   values marked in that file (`ipv6.method`, `security.updates`) are the
-   ones to revisit then.
+   becomes the input rather than a description of the result; the value
+   marked in that file (`ipv6.method`) is the one to revisit then.
 2. Fail the boot test on the three hooks that report an error, once each
    has been diagnosed: `15regen-sslcert`, `29tagid`, `95secupdates`.
 3. The recipe is no longer byte-identical to upstream: the console banner
