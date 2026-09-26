@@ -7,9 +7,11 @@ completes headless from an instance spec, and the machine matches the spec.
 ## Layout
 
 - `boot-test.sh`: the boot test. `test-appliance.yml` (reusable workflow of
-  `keel-linux/.github`) runs it on the self-hosted LXC runner after
-  `bt-layer` built the layer and `keel verify` checked it. It is the thin
-  main: assemble, install the spec, start the container, wait, `keel diff`.
+  `keel-linux/.github`) runs it on the self-hosted LXC runner after pulling
+  the layers from `https://mirror.keellinux.org/layers` and checking them
+  with `keel verify`. It is the thin main: assemble, mark the tree as a
+  container, install the spec, the secret and the conf, start the container,
+  wait, `keel diff`.
 - `lib/boot-test-lib.sh`: the logic (argument parsing, address discovery
   from `lxc-info`, waiting with a deadline, readiness checks, verdicts), as
   functions with no side effects, per decision 0004.
@@ -52,39 +54,58 @@ falls back to `banner-small.txt`, and a terminal narrower than the small
 mark drops the mark and keeps the addresses. On an appliance the same
 block comes from `/etc/update-motd.d/00-keel-banner` at every login.
 
-## The boot test by hand, on the build host
+## The boot test by hand
 
 Needs root, `keel` on `PATH`, LXC (`lxc-start`, `lxc-info`, `lxc-attach`,
-`lxc-stop`), a bridge with IPv6 router advertisements or DHCPv6 (default
-`br0`), and the layers `bt-layer` wrote (default `/mnt/builds/layers`).
-From the repository root:
+`lxc-stop`) and a bridge with IPv6 router advertisements or DHCPv6. It does
+not need fab, deck or buildtasks: the layers are fetched, not built.
 
-    /turnkey/buildtasks/bt-layer core
+On any host with LXC, from the repository root, taking the layers from the
+project mirror over IPv6:
+
+    tests/boot-test.sh core --layers-dir https://mirror.keellinux.org/layers \
+        --bridge lxcbr0
+
+On the build host, against the layers `bt-layer` just wrote:
+
+    /turnkey/buildtasks-keel/bt-layer core
     keel verify --layers-dir /mnt/builds/layers --non-interactive
     tests/boot-test.sh core
 
-Useful options: `--bridge lxcbr0`, `--layers-dir DIR`, `--lxc-path DIR`,
-`--timeout 600`, `--keep` (leaves the container running; then
-`lxc-attach -n keel-core-boot-test`, and `lxc-stop -k` plus
-`rm -r /var/lib/lxc/keel-core-boot-test` when done). `tests/boot-test.sh
---help` lists them all.
+`--layers-dir` is a directory or an http(s) URL; the other useful options
+are `--bridge`, `--cache-dir`, `--lxc-path`, `--name`, `--timeout 600` and
+`--keep` (leaves the container running; then `lxc-attach -n <name>`, and
+`lxc-stop -k` plus `rm -r <lxc-path>/<name>` when done).
+`tests/boot-test.sh --help` lists them all.
 
 What it does, in order:
 
 1. `keel pull` and `keel assemble` the chain into
-   `/var/lib/lxc/keel-core-boot-test/rootfs`.
-2. Writes a random root password to `etc/keel/secrets/root_password` (mode
+   `<lxc-path>/<name>/rootfs`.
+2. Creates `var/lib/turnkey-info/inithooks.service/lxc` in the rootfs, the
+   marker `bt-container` writes and the one `keel inspect` reads to call the
+   machine a container (`network.managed_by: host`).
+3. Writes a random root password to `etc/keel/secrets/root_password` (mode
    0600) and installs `tests/instance.yaml` at `etc/keel/instance.yaml` and
    `etc/inithooks.yaml` in the rootfs (both paths the first boot may read
    until the maintainer settles the name).
-3. Writes an LXC config for that rootfs on the bridge and starts the
+4. Renders the spec into the rootfs `etc/inithooks.conf` with `keel spec
+   apply`, from a copy whose secret references point inside the rootfs.
+   Without the conf the first boot is not headless: `30rootpass` opens a
+   dialog and waits forever.
+5. Writes an LXC config for that rootfs on the bridge and starts the
    container.
-4. Waits for a global IPv6 address on the container (`lxc-info -i`).
-5. Waits until the first boot has finished: `RUN_FIRSTBOOT=false` in the
-   rootfs copy of `/etc/default/inithooks` and a `confconsole` process (the
-   usage screen on the console), or an SSH banner on `[address]:22`.
-6. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or
+6. Waits for a global IPv6 address on the container (`lxc-info -i`).
+7. Waits until the first boot has finished: `RUN_FIRSTBOOT=false` in the
+   rootfs copy of `/etc/default/inithooks`, and then either a `confconsole`
+   process (the usage screen on the console) or an SSH banner on
+   `[address]:22`. The flag is what says the boot ended; sshd answers long
+   before the hooks are done.
+8. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or
    13 (no drift) passes, 14 (drift) or any other code fails.
+
+Measured on `keel-lxc-1` (2 GB of layer, 6 vCPU): pull 3 s from the mirror
+on the same host, assemble 13 s, boot and first boot 10 s.
 
 On failure it prints the last lines of the container's
 `/var/log/inithooks.log`. The container is stopped and removed unless

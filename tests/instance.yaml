@@ -1,7 +1,17 @@
 # Instance spec of the boot test (format: docs/spec.md of the keel
-# repository). IPv6 only, from the bridge; no certificate request, no
-# network access at first boot; the root password is a file the test
-# writes into the rootfs before booting.
+# repository). IPv6 first, from the bridge; no certificate request; the
+# root password is a file the test writes into the rootfs before booting.
+#
+# The values are what a container assembled from the core layer must look
+# like once its first boot has finished, so `keel diff` finding no drift
+# is the verdict. Two of them are not what a reader would guess:
+#
+#   ipv6.method: dhcp   ifupdown has no SLAAC method, so `inet6 dhcp` is
+#                       what the hook writes for `auto` as well and what
+#                       inspect reads back (docs/spec.md, network).
+#   updates: force      the core layer ships /etc/cron-apt/config with
+#                       forced security updates; declaring anything else
+#                       would be drift the appliance never resolves.
 version: 1
 
 instance:
@@ -12,8 +22,10 @@ network:
   managed_by: host
   interfaces:
     eth0:
+      ipv4:
+        method: dhcp
       ipv6:
-        method: auto
+        method: dhcp
 
 tls:
   acme:
@@ -28,6 +40,6 @@ hub:
 
 security:
   alerts: skip
-  updates: skip
+  updates: force
 
 first_login_wizard: false

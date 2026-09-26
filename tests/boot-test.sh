@@ -52,13 +52,23 @@ mkdir -p "$BT_ROOTFS"
 keel pull "$BT_APPLIANCE" --source "$BT_LAYERS_DIR" --cache-dir "$BT_CACHE_DIR" --non-interactive
 keel assemble "$BT_APPLIANCE" --rootfs "$BT_ROOTFS" --cache-dir "$BT_CACHE_DIR" --non-interactive
 
-# 2. The instance spec and the secret it references.
+# 2. The container marker, the instance spec, the secret it references and
+#    the conf the first boot hooks read. The marker under
+#    /var/lib/turnkey-info is what bt-container writes and what inspect
+#    reads to call the machine a container (managed_by: host); the conf is
+#    what makes the first boot headless, and without it 30rootpass waits on
+#    a dialog forever.
+log "installing the spec, the secrets and the conf into $BT_ROOTFS"
+install -D -m 0644 /dev/null "$BT_ROOTFS/var/lib/turnkey-info/inithooks.service/lxc"
 install -d -m 0700 "$BT_ROOTFS/etc/keel/secrets"
 bt_random_password > "$BT_ROOTFS/etc/keel/secrets/root_password"
 chmod 0600 "$BT_ROOTFS/etc/keel/secrets/root_password"
 for target in $(bt_spec_targets "$BT_ROOTFS"); do
     install -D -m 0600 "$BT_SPEC" "$target"
 done
+bt_spec_in_rootfs "$BT_SPEC" "$BT_ROOTFS" > "$container_dir/instance-host.yaml"
+keel spec apply --spec "$container_dir/instance-host.yaml" \
+    --conf "$BT_ROOTFS/etc/inithooks.conf" --non-interactive
 
 # 3. Boot.
 bt_lxc_config "$BT_NAME" "$BT_ROOTFS" "$BT_BRIDGE" > "$container_dir/config"
@@ -71,10 +81,12 @@ bt_wait_for "$BT_TIMEOUT" "$BT_INTERVAL" "a global IPv6 address on $BT_NAME" \
 addr=$(bt_container_ipv6 "$BT_NAME" "$BT_LXC_PATH")
 log "container address $addr"
 
-# 5. First boot finished: confconsole is up on the console, or SSH answers.
+# 5. First boot finished: 98finalize has cleared RUN_FIRSTBOOT and the
+#    machine answers, on the console (confconsole's usage screen) or on
+#    SSH. The answer alone is not enough: sshd is up long before the hooks
+#    are done, so the flag is what says the first boot ended.
 usage_screen() {
-    bt_firstboot_done_in "$BT_ROOTFS/etc/default/inithooks" \
-        && lxc attach -- pgrep -f confconsole > /dev/null 2>&1
+    lxc attach -- pgrep -f confconsole > /dev/null 2>&1
 }
 ssh_answers() {
     local banner
@@ -82,7 +94,10 @@ ssh_answers() {
         "$addr" "$BT_SSH_PORT" 2>/dev/null) || return 1
     bt_is_ssh_banner "$banner"
 }
-first_boot_done() { usage_screen || ssh_answers; }
+first_boot_done() {
+    bt_firstboot_done_in "$BT_ROOTFS/etc/default/inithooks" || return 1
+    usage_screen || ssh_answers
+}
 bt_wait_for "$BT_TIMEOUT" "$BT_INTERVAL" "the confconsole usage screen or SSH on [$addr]:$BT_SSH_PORT" \
     first_boot_done
 log "first boot finished; ssh root@$addr"
