@@ -1,0 +1,70 @@
+#!/bin/bash
+# The Keel console banner, above the message of the day the appliance
+# already prints.
+#
+# Why here. /etc/update-motd.d is a drop-in directory that pam_motd runs at
+# every interactive login, over SSH and on the container console alike, and
+# it is where common (conf/turnkey.d/motd) already writes the sysinfo, the
+# first boot warning and the confconsole line. Adding one file named before
+# those keeps every word upstream prints and puts the mark above it; no
+# upstream file is edited and nothing is replaced. /etc/issue was not used:
+# getty prints it before the login prompt, so the mark would scroll away
+# with each failed attempt and would be printed twice on a console login.
+# The other console, tty1 running confconsole from inithooks, never reaches
+# pam_motd; the mark is added to the usage screen in the confconsole
+# repository, from these same two files.
+#
+# Logic is in /usr/lib/keel/banner.sh (decision 0004); this file only
+# collects the facts and prints what the library returns.
+
+set -u
+
+KEEL_BANNER_LIB="${KEEL_BANNER_LIB:-/usr/lib/keel/banner.sh}"
+# The appliance version: /etc/turnkey_version, written by turnkey.mk of
+# common at build time and read by inithooks (firstboot.d/29tagid). There is
+# no Keel equivalent yet, nothing writes one, and inventing a second file
+# here would leave it empty on every image built today; the path is a
+# variable so the day the build writes /etc/keel_version it is one line.
+KEEL_VERSION_FILE="${KEEL_VERSION_FILE:-/etc/turnkey_version}"
+# confconsole's convention for a name other than the appliance name.
+KEEL_APPNAME_FILE="${KEEL_APPNAME_FILE:-/etc/appname}"
+
+[ -r "$KEEL_BANNER_LIB" ] || exit 0
+# shellcheck source=../../usr/lib/keel/banner.sh
+. "$KEEL_BANNER_LIB"
+
+rows=$KEEL_BANNER_ROWS
+cols=$KEEL_BANNER_COLS
+if size=$(stty size 2>/dev/null < /dev/tty); then
+    read -r tty_rows tty_cols <<< "$size"
+    if [ "${tty_rows:-0}" -gt 0 ] && [ "${tty_cols:-0}" -gt 0 ]; then
+        rows=$tty_rows
+        cols=$tty_cols
+    fi
+fi
+
+version_string=""
+if [ -r "$KEEL_VERSION_FILE" ]; then
+    read -r version_string < "$KEEL_VERSION_FILE" || true
+fi
+app=$(keel_banner_app_name "$version_string") || app=$(hostname)
+version=$(keel_banner_version "$version_string") || version=""
+
+if [ -r "$KEEL_APPNAME_FILE" ]; then
+    read -r name < "$KEEL_APPNAME_FILE" || name=""
+else
+    name="Keel Linux $app"
+fi
+
+addresses=()
+if address=$(ip -6 addr show scope global 2>/dev/null | keel_banner_pick_ipv6)
+then
+    addresses+=("$address")
+fi
+if address=$(ip -4 addr show scope global 2>/dev/null | keel_banner_pick_ipv4)
+then
+    addresses+=("$address")
+fi
+
+keel_banner_render "$rows" "$cols" "$name" "$version" "${addresses[@]}"
+echo
