@@ -11,6 +11,9 @@
 #     recovery shell and "ssh -T" all render it;
 #   - the mark, then one line naming the appliance and its version, then the
 #     addresses, in that order and nothing above the mark;
+#   - the mark is centred on the width it is given, as a block: every line
+#     moves right by the same indent, so the picture keeps its internal
+#     alignment. The title and the addresses stay at column one;
 #   - IPv6 first, IPv4 after and only when it is there, and an address that
 #     is the host of a URL is bracketed: https://[2001:db8:1::10];
 #   - the banner never scrolls the addresses away: the mark is dropped to
@@ -18,7 +21,9 @@
 #
 # The two mark files are exports of keel-mark.svg of the design system and
 # are installed unmodified; a change to the mark is a re-export, never an
-# edit of the characters.
+# edit of the characters. No size of theirs is written down here: every
+# function that needs the rows or the columns of a mark measures the file,
+# so a re-export at another size is a change to the design system alone.
 # shellcheck disable=SC2034  # KEEL_BANNER_ROWS and _COLS are read by callers
 
 KEEL_BANNER_MARK="${KEEL_BANNER_MARK:-/etc/keel/banner.txt}"
@@ -152,8 +157,9 @@ keel_banner_mark_size() {
 # The first mark of the list that fits a ROWS by COLS terminal once
 # BODY_ROWS of text and the reserved rows are kept free below it. Prints its
 # path; returns 1 when none fits, and then the caller prints the text alone.
-# The marks are given largest first, so an 80 by 24 console falls back to
-# the small mark and a serial line of 20 columns to no mark.
+# The marks are given largest first, so a console too short or too narrow
+# for the full mark falls back to the small one and a serial line narrower
+# than that to no mark at all. Each candidate is measured from its file.
 keel_banner_choose_mark() {
     local rows=$1 cols=$2 body=$3
     shift 3
@@ -171,10 +177,42 @@ keel_banner_choose_mark() {
     return 1
 }
 
+# keel_banner_center_mark WIDTH FILE
+# The lines of FILE shifted right by one common indent, so the mark is
+# centred on WIDTH as a block and not line by line: padding each line to its
+# own centre would pull the picture apart. The indent is half of what WIDTH
+# has left over once the widest line is placed, so a mark as wide as WIDTH or
+# wider starts at column one and nothing is ever cut. A blank line stays
+# blank rather than becoming a line of spaces, and no line ends in
+# whitespace: trailing blanks are invisible on the console and survive every
+# copy of the block. Returns 1 when the file cannot be measured, the
+# condition keel_banner_mark_size reports.
+keel_banner_center_mark() {
+    local width=${1-} file=${2-} size indent pad="" line
+    size=$(keel_banner_mark_size "$file") || return 1
+    indent=$(((width - ${size#* }) / 2))
+    if [ "$indent" -gt 0 ]; then
+        printf -v pad '%*s' "$indent" ''
+    fi
+    local -a mark_lines=()
+    mapfile -t mark_lines < "$file"
+    for line in "${mark_lines[@]}"; do
+        # ${line##*[![:space:]]} is the run of blanks that ends the line, and
+        # the whole line when it holds nothing else.
+        line=${line%"${line##*[![:space:]]}"}
+        if [ -z "$line" ]; then
+            printf '\n'
+            continue
+        fi
+        printf '%s%s\n' "$pad" "$line"
+    done
+}
+
 # keel_banner_render ROWS COLS NAME VERSION [ADDRESS...]
 # The whole block, from the mark files named by KEEL_BANNER_MARK and
 # KEEL_BANNER_MARK_SMALL. Three rows of text go with the address block: the
 # blank row under the mark, the title, and the blank row under the title.
+# The mark is centred on COLS, the title and the addresses are not.
 keel_banner_render() {
     local rows=$1 cols=$2 name=$3 version=$4
     shift 4
@@ -185,7 +223,7 @@ keel_banner_render() {
     local mark
     if mark=$(keel_banner_choose_mark "$rows" "$cols" "$body" "${marks[@]}")
     then
-        cat "$mark"
+        keel_banner_center_mark "$cols" "$mark"
         printf '\n'
     fi
     keel_banner_title "$name" "$version" "$cols"
