@@ -412,6 +412,59 @@ assert_centred_rows() {
     done
 }
 
+# block_margins WIDTH
+# "LEFT RIGHT": the blank columns on each side of the block now in ROWS.
+# Both are read off the block itself rather than computed from the file, so
+# a test that uses this proves where the mark landed instead of repeating
+# the arithmetic that put it there.
+block_margins() {
+    local width=$1 line lead left="" widest=0
+    for line in "${ROWS[@]}"; do
+        [ -n "$line" ] || continue
+        lead=${line%%[![:space:]]*}
+        if [ -z "$left" ] || [ "${#lead}" -lt "$left" ]; then
+            left=${#lead}
+        fi
+        if [ "${#line}" -gt "$widest" ]; then
+            widest=${#line}
+        fi
+    done
+    printf '%s %s\n' "${left:-0}" "$((width - widest))"
+}
+
+@test "center_mark: the block stands in the middle, whatever the width" {
+    # A mark of this file's own, whose widest line is neither the first nor
+    # the last and one of whose lines is indented in the art itself: an
+    # indent taken from the wrong line, or applied line by line rather than
+    # to the block, shows up here as a lopsided pair of margins.
+    printf '%s\n' '/\' '/====\' '' '  ||' > "$SCRATCH/mark"
+    local width margins left right
+    for width in 6 7 8 9 23 24 80 81; do
+        run keel_banner_center_mark "$width" "$SCRATCH/mark"
+        [ "$status" -eq 0 ]
+        rows_of
+        margins=$(block_margins "$width")
+        left=${margins% *}
+        right=${margins#* }
+        # equal margins, or the one odd column left over on the right
+        [ "$((right - left))" -ge 0 ]
+        [ "$((right - left))" -le 1 ]
+    done
+}
+
+# draw_mark FILE ROWS COLS
+# A mark of exactly ROWS rows and COLS columns, ragged so that its widest
+# line is the last one. A test may ask for any size with this, including
+# one no art has ever had and none is planned to have.
+draw_mark() {
+    local file=$1 rows=$2 cols=$3 i
+    : > "$file"
+    for ((i = 1; i < rows; i++)); do
+        printf '#\n' >> "$file"
+    done
+    printf '%*s\n' "$cols" '' | tr ' ' '#' >> "$file"
+}
+
 # the whole banner
 #
 # A rendered block is the mark, a blank row, the title, a blank row and the
@@ -516,6 +569,55 @@ assert_centred_rows() {
     [ "${ROWS[5]}" = "" ]
     [ "${ROWS[6]}" = "IPv6 Web:  https://[2001:db8:1::10]" ]
     [ "${ROWS[7]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
+}
+
+@test "render: a mark of a size nobody drew renders whole and centred" {
+    # Sizes picked to be nothing the art is or has been: one character, a
+    # mark taller and far wider than any console mark, and a mark of one
+    # tall column. Whichever it is, the renderer measures it, the block is
+    # complete and centred, and the text below it keeps its order and its
+    # column one. Five rows of text go with one address: the blank row, the
+    # title, the blank row and the two address lines.
+    local body=5 size rows cols term_rows term_cols
+    for size in "1 1" "2 3" "9 17" "31 71" "44 7"; do
+        rows=${size% *}
+        cols=${size#* }
+        draw_mark "$SCRATCH/mark" "$rows" "$cols"
+        KEEL_BANNER_MARK="$SCRATCH/mark"
+        KEEL_BANNER_MARK_SMALL="$SCRATCH/mark"
+        [ "$(keel_banner_mark_size "$SCRATCH/mark")" = "$rows $cols" ]
+
+        # the smallest terminal this mark fits in, nine columns to spare
+        term_rows=$((rows + body + KEEL_BANNER_RESERVED_ROWS))
+        term_cols=$((cols + 9))
+        run keel_banner_render "$term_rows" "$term_cols" core 19.0 \
+            2001:db8:1::10
+        [ "$status" -eq 0 ]
+        rows_of
+        [ "${#ROWS[@]}" -eq $((rows + body)) ]
+        [ "${#ROWS[@]}" -le $((term_rows - KEEL_BANNER_RESERVED_ROWS)) ]
+        assert_centred_rows "$term_cols" "$SCRATCH/mark"
+        [ "${ROWS[rows]}" = "" ]
+        [ "${ROWS[rows + 1]}" = "core 19.0" ]
+        [ "${ROWS[rows + 2]}" = "" ]
+        [ "${ROWS[rows + 3]}" = "IPv6 Web:  https://[2001:db8:1::10]" ]
+        [ "${ROWS[rows + 4]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
+
+        # one row short, or one column short, and the mark goes rather
+        # than a line of text: what is left is the body without the blank
+        # row the mark carried above it.
+        run keel_banner_render $((term_rows - 1)) "$term_cols" core 19.0 \
+            2001:db8:1::10
+        rows_of
+        [ "${#ROWS[@]}" -eq $((body - 1)) ]
+        [ "${ROWS[0]}" = "core 19.0" ]
+        [ "${ROWS[2]}" = "IPv6 Web:  https://[2001:db8:1::10]" ]
+        run keel_banner_render "$term_rows" $((cols - 1)) core 19.0 \
+            2001:db8:1::10
+        rows_of
+        [ "${#ROWS[@]}" -eq $((body - 1)) ]
+        [ "${ROWS[${#ROWS[@]} - 1]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
+    done
 }
 
 @test "render: the block is plain ASCII with no escape character" {

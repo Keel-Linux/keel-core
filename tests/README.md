@@ -23,7 +23,11 @@ completes headless from an instance spec, and the machine matches the spec.
   block). The mark files are the ones the overlay installs and the addresses
   are arguments, so nothing here needs a terminal, a network or root. No test
   writes down the size of a mark: it is measured from the file, so the art can
-  be redrawn in the design system without touching a test.
+  be redrawn in the design system without touching a test. Two tests hold that
+  open with marks of their own rather than the installed art: one reads the
+  blank columns off each side of a centred block and requires them equal, and
+  one renders marks from a single character up to 31 by 71 and requires each
+  to come out whole, centred and above an address block that lost no line.
 - `coverage.sh`: runs each bats file under kcov and fails when any measured
   library is below `COVERAGE_THRESHOLD` (default 95).
 - `instance.yaml`: the spec the container boots from. IPv6 only, address
