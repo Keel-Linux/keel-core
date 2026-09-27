@@ -19,9 +19,15 @@ completes headless from an instance spec, and the machine matches the spec.
   `PATH`; the clock and `sleep` are functions. No root, no network, no LXC.
 - `banner.bats`: unit tests of `overlay/usr/lib/keel/banner.sh`, the console
   banner renderer of the appliance overlay (the version string, the title,
-  the address block, which mark fits, the whole block). The mark files are
-  the ones the overlay installs and the addresses are arguments, so nothing
-  here needs a terminal, a network or root.
+  the address block, which mark fits, the centring of the mark, the whole
+  block). The mark files are the ones the overlay installs and the addresses
+  are arguments, so nothing here needs a terminal, a network or root. No test
+  writes down the size of a mark: it is measured from the file, so the art can
+  be redrawn in the design system without touching a test. Two tests hold that
+  open with marks of their own rather than the installed art: one reads the
+  blank columns off each side of a centred block and requires them equal, and
+  one renders marks from a single character up to 31 by 71 and requires each
+  to come out whole, centred and above an address block that lost no line.
 - `coverage.sh`: runs each bats file under kcov and fails when any measured
   library is below `COVERAGE_THRESHOLD` (default 95).
 - `instance.yaml`: the spec the container boots from. IPv6 only, address
@@ -49,10 +55,11 @@ appliance. From the repository root:
              keel_banner_render 40 100 "Keel Linux core" 19.0-trixie-amd64 \
                  2001:db8:1::10 192.0.2.10'
 
-The first two arguments are the rows and columns of the terminal: 24 rows
-falls back to `banner-small.txt`, and a terminal narrower than the small
-mark drops the mark and keeps the addresses. On an appliance the same
-block comes from `/etc/update-motd.d/00-keel-banner` at every login.
+The first two arguments are the rows and columns of the terminal. The mark is
+centred on the columns as a block; a terminal with no room for the full mark
+falls back to `banner-small.txt`, and one narrower than the small mark drops
+the mark and keeps the addresses. On an appliance the same block comes from
+`/etc/update-motd.d/00-keel-banner` at every login.
 
 ## The boot test by hand
 

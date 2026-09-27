@@ -1,3 +1,20 @@
+keel-core-19.0 (1) keel; urgency=low
+
+  * Console banner (the Keel mark above the message of the day):
+
+    - Centre the mark on the width of the terminal. It was printed from
+      column one, so on an 80 column console it stood well left of centre.
+      The whole block moves by one indent, so the mark keeps its internal
+      alignment; the title and the address lines stay at column one, as
+      before.
+
+    - Stop assuming the size of the two mark files. The rows and the columns
+      of a mark are measured from the file, in the renderer and in its tests
+      alike, so the art can be redrawn at another size in the design system
+      without a change here.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Sun, 27 Sep 2026 18:06:18 +0000
+
 turnkey-core-19.0 (1) turnkey; urgency=low
 
   * Upgraded base distribution to Debian 13.x/Trixie.
