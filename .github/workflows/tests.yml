@@ -32,6 +32,7 @@ jobs:
     uses: keel-linux/.github/.github/workflows/test-appliance.yml@verify/gate-behaviour
     with:
       appliance: core
+      allow_unpublished: true
       # core is the rootfs layer at the bottom of every chain.
       parent: ""
       timeout: 60
