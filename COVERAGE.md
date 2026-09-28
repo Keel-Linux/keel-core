@@ -97,8 +97,13 @@ overlay cannot remove a file, which is why this is a conf script and not
 an overlay entry.
 
 The order was read from `root.patched/body` in `/usr/share/fab/product.mk`
-**of the build host**, fab `1.1.1+keel1`, which orders the unit phases
-differently from upstream fab:
+**of the build host**, which runs fab `1.1.1+keel2` (`product.mk` md5
+`a06bfe03`). The unit phases belong to that version: they arrive in it
+through *Apply the units before the common removelists* and *Let a unit
+carry a removelist*, so `1.1.1` (md5 `0657df1a`, what a stock tkldev
+container has) and `1.1.1+keel1` (md5 `c04cb601`) both still have
+upstream's order. Check the reading against the md5 rather than against
+the version string, and take it from the machine that builds:
 
 1. common overlays
 2. common conf scripts (`conf/turnkey.d/motd` among them)

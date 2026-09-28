@@ -42,10 +42,11 @@ keel-core-19.0 (2) keel; urgency=low
       and which of them the banner shows is the banner's own rule.
 
     - The order the removal depends on, read from root.patched/body in
-      /usr/share/fab/product.mk of the build host (fab 1.1.1+keel1, whose
-      unit phases are ordered differently from upstream fab): common
-      overlays, common conf scripts, common patches, unit overlays, unit
-      conf scripts, unit removelists, common removelists, the product
+      /usr/share/fab/product.mk of the build host, which runs fab
+      1.1.1+keel2 (md5 a06bfe03); the unit phases belong to that version
+      and neither 1.1.1 nor 1.1.1+keel1 has them: common overlays,
+      common conf scripts, common patches, unit overlays, unit conf
+      scripts, unit removelists, common removelists, the product
       overlay, the product conf scripts, the product patches, the product
       removelist, the initramfs, the common removelists-final, then
       root.patched/post. The two positions this change rests on are that
