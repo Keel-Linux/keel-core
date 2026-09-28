@@ -270,6 +270,197 @@ never() { return 1; }
     [[ $output == *"gave only 5 usable characters"* ]]
 }
 
+# the login
+
+# What /etc/update-motd.d printed before this change, captured from the
+# wordpress-demo container on the build host on 2026-09-28: two welcomes,
+# the second one naming another distribution, and a backup service this
+# project does not host.
+motd_before() {
+    cat <<'OUT'
+
+Keel Linux wordpress 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5:e0fc:fc60:e690:1c25]
+IPv6 SSH:  root@2804:710:d0:5:e0fc:fc60:e690:1c25
+
+Welcome to Wordpress-demo, TurnKey GNU/Linux 19.0 (Debian 13/Trixie)
+
+  System information for Mon Sep 28 02:20:28 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    41                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   IP address for eth0: 10.88.5.69
+
+  TKLBAM (Backup and Migration):  NOT INITIALIZED
+
+    To initialize TKLBAM, run the "tklbam-init" command to link this
+    system to your TurnKey Hub account. For details see the man page or
+    go to:
+
+        https://www.turnkeylinux.org/tklbam
+
+    For Advanced commandline config run:    confconsole
+
+  For more info see: https://www.turnkeylinux.org/docs/confconsole
+
+Linux wordpress-demo 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
+# What it must print instead: one welcome, ours, the same facts, and
+# nothing about a service this distribution does not have.
+motd_after() {
+    cat <<'OUT'
+
+Keel Linux core 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5::a6e]
+IPv6 SSH:  root@2804:710:d0:5::a6e
+
+  System information for Mon Sep 28 02:20:44 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    39                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   IP address for eth0: 10.88.5.69
+
+  Backup:  not configured. Keel has no backup service yet; when one
+           arrives it is configured from confconsole.
+
+    For advanced configuration run:  confconsole
+
+  For more info see: https://github.com/keel-linux/confconsole
+
+Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
+@test "motd_greetings: the login before this change welcomed twice" {
+    run bt_motd_greetings "$(motd_before)"
+    [ "${#lines[@]}" -eq 2 ]
+    [[ ${lines[0]} == *"Keel Linux wordpress"* ]]
+    [[ ${lines[1]} == *"TurnKey GNU/Linux"* ]]
+}
+
+@test "motd_greetings: the login after it welcomes once, as Keel" {
+    run bt_motd_greetings "$(motd_after)"
+    [ "${#lines[@]}" -eq 1 ]
+    [[ ${lines[0]} == *"Keel Linux core"* ]]
+}
+
+@test "motd_greetings: a login that greets nobody has no greeting line" {
+    run bt_motd_greetings "nothing to see here"
+    [ -z "$output" ]
+}
+
+@test "motd_greetings: a welcome to any product counts" {
+    run bt_motd_greetings "Welcome to Somewhere, Another GNU/Linux 1.0"
+    [ "${#lines[@]}" -eq 1 ]
+}
+
+@test "motd_missing_fields: the block after the change keeps every fact" {
+    run bt_motd_missing_fields "$(motd_after)"
+    [ -z "$output" ]
+}
+
+@test "motd_missing_fields: a lost field is named" {
+    # the whole row carries two fields, so only the label goes
+    text=$(motd_after | sed 's/Swap usage:/Swap:/')
+    run bt_motd_missing_fields "$text"
+    [ "$output" = "Swap usage:" ]
+}
+
+@test "motd_missing_fields: an empty login is missing all of them" {
+    run bt_motd_missing_fields ""
+    [ "${#lines[@]}" -eq 6 ]
+}
+
+@test "motd_forbidden_words: the login before this change said both" {
+    run bt_motd_forbidden_words "$(motd_before)"
+    [ "${#lines[@]}" -eq 2 ]
+    [[ $output == *turnkey* ]]
+    [[ $output == *tklbam* ]]
+}
+
+@test "motd_forbidden_words: the login after it says neither" {
+    run bt_motd_forbidden_words "$(motd_after)"
+    [ -z "$output" ]
+}
+
+@test "motd_forbidden_words: the match ignores case" {
+    run bt_motd_forbidden_words "see https://www.TurnKeyLinux.org/tklbam"
+    [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "motd_verdict: the login this change produces passes" {
+    run bt_motd_verdict "$(motd_after)"
+    [ "$status" -eq 0 ]
+    [[ $output == *"one welcome"* ]]
+    [[ $output == *"names Keel"* ]]
+    [[ $output == *"system information"* ]]
+}
+
+@test "motd_verdict: the login this change replaces fails on every count" {
+    run bt_motd_verdict "$(motd_before)"
+    [ "$status" -eq 1 ]
+    [[ $output == *"2 welcomes"* ]]
+    [[ $output == *turnkey* ]]
+    [[ $output == *tklbam* ]]
+}
+
+@test "motd_verdict: a welcome that names another distribution fails" {
+    text=$(motd_after | sed 's/^Keel Linux core.*/Welcome to Core, Another GNU\/Linux 19.0/')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"does not name Keel"* ]]
+}
+
+@test "motd_verdict: a login with no welcome at all fails" {
+    text=$(motd_after | grep -v '^Keel Linux core')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"0 welcomes"* ]]
+}
+
+@test "motd_verdict: losing the system information block fails" {
+    text=$(motd_after | grep -vE 'System load|Processes|Usage of /')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"System load:"* ]]
+    [[ $output == *"Usage of /:"* ]]
+}
+
+@test "motd_verdict: a login that prints nothing fails" {
+    run bt_motd_verdict ""
+    [ "$status" -eq 1 ]
+    [[ $output == *"printed nothing"* ]]
+    run bt_motd_verdict "   "
+    [ "$status" -eq 1 ]
+}
+
+@test "motd_verdict: a layer built before this change is named as the cause" {
+    run bt_motd_verdict "$(motd_before)"
+    [ "$status" -eq 1 ]
+    [[ $output == *"rebuild"* ]]
+}
+
+@test "motd_verdict: under the boot test's own shell options it does not vanish" {
+    # docs/traps.md, "A bats suite cannot see a library that kills its
+    # caller": boot-test.sh runs under set -euo pipefail, bats does not.
+    cat > "$STUBS/caller" <<CALLER
+#!/bin/bash
+set -euo pipefail
+. "$BATS_TEST_DIRNAME/lib/boot-test-lib.sh"
+rc=0
+bt_motd_verdict "nothing useful here" || rc=\$?
+echo "verdict exited \$rc"
+CALLER
+    chmod +x "$STUBS/caller"
+    run "$STUBS/caller"
+    [ "$status" -eq 0 ]
+    [[ $output == *"verdict exited 1"* ]]
+}
+
 @test "diff_verdict: 0 and 13 pass, everything else fails with a message" {
     run bt_diff_verdict 0
     [ "$status" -eq 0 ]

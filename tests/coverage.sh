@@ -21,6 +21,8 @@ threshold="${COVERAGE_THRESHOLD:-95}"
 targets=(
     "tests/lib/boot-test-lib.sh:tests/boot-test.bats"
     "overlay/usr/lib/keel/banner.sh:tests/banner.bats"
+    "overlay/usr/lib/keel/motd.sh:tests/motd.bats"
+    "conf.d/main:tests/motd.bats"
 )
 
 for tool in kcov bats; do

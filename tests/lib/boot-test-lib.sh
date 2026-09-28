@@ -252,6 +252,127 @@ bt_random_password() {
     printf '%s\n' "${pool:0:BT_PASSWORD_LENGTH}"
 }
 
+# The drop-in directory pam_motd runs at an interactive login, and the
+# way to render it: run-parts is what pam_motd does with it, so this is
+# the login the operator gets and not a file read off the disk.
+BT_MOTD_DIR=/etc/update-motd.d
+# A line that names a distribution to whoever just logged in: the welcome.
+# There must be exactly one and it must be ours (issue #6).
+BT_MOTD_GREETINGS=("Welcome to " "Keel Linux" "Keel GNU/Linux" "TurnKey GNU/Linux")
+BT_MOTD_KEEL="Keel"
+# The facts the banner gave before this change and must still give: losing
+# the system information block would be a regression.
+BT_MOTD_FIELDS=("System load:" "Memory usage:" "Processes:" "Swap usage:" "Usage of /:" "IP address")
+# What a Keel login must not say: the distribution this image is not, and
+# the backup service it does not have (decisions 0002 and 0014).
+BT_MOTD_FORBIDDEN=(turnkey tklbam)
+
+bt_motd_greetings() {
+    # bt_motd_greetings TEXT: the lines of a rendered motd that welcome
+    # the operator to a distribution, one per line.
+    local text=${1-} line phrase
+    while IFS= read -r line; do
+        for phrase in "${BT_MOTD_GREETINGS[@]}"; do
+            case $line in
+                *"$phrase"*)
+                    printf '%s\n' "$line"
+                    break
+                    ;;
+            esac
+        done
+    done <<< "$text"
+}
+
+bt_motd_missing_fields() {
+    # bt_motd_missing_fields TEXT: the system information labels TEXT does
+    # not carry, one per line; nothing when it carries them all.
+    local text=${1-} field
+    for field in "${BT_MOTD_FIELDS[@]}"; do
+        case $text in
+            *"$field"*) continue ;;
+        esac
+        printf '%s\n' "$field"
+    done
+}
+
+bt_motd_forbidden_words() {
+    # bt_motd_forbidden_words TEXT: the words TEXT says and must not,
+    # matched without regard to case so turnkeylinux.org counts.
+    local text=${1-} word
+    text=${text,,}
+    for word in "${BT_MOTD_FORBIDDEN[@]}"; do
+        case $text in
+            *"$word"*) printf '%s\n' "$word" ;;
+        esac
+    done
+}
+
+bt_motd_verdict() {
+    # bt_motd_verdict TEXT: the verdicts on what an interactive login
+    # prints. Prints one line per verdict and returns 1 when any of them
+    # failed. This is the assertion that closes issue #6, and it is
+    # behavioural: TEXT is what the drop-in chain produced in the running
+    # container, not the content of a file.
+    local text=${1-} failed=0 greetings count missing forbidden line
+    if [ -z "${text//[[:space:]]/}" ]; then
+        echo "motd: the login printed nothing" >&2
+        return 1
+    fi
+    greetings=$(bt_motd_greetings "$text")
+    count=0
+    if [ -n "$greetings" ]; then
+        count=$(printf '%s\n' "$greetings" | wc -l)
+    fi
+    if [ "$count" -eq 1 ]; then
+        echo "motd: one welcome: $greetings"
+    else
+        echo "motd: $count welcomes, there must be one" >&2
+        if [ -n "$greetings" ]; then
+            while IFS= read -r line; do
+                printf '  %s\n' "$line" >&2
+            done <<< "$greetings"
+        fi
+        failed=1
+    fi
+    case $greetings in
+        *"$BT_MOTD_KEEL"*)
+            echo "motd: the welcome names Keel"
+            ;;
+        *)
+            echo "motd: the welcome does not name Keel" >&2
+            failed=1
+            ;;
+    esac
+    missing=$(bt_motd_missing_fields "$text")
+    if [ -z "$missing" ]; then
+        echo "motd: the system information block carries every field"
+    else
+        echo "motd: the system information block lost fields:" >&2
+        while IFS= read -r line; do
+            printf '  %s\n' "$line" >&2
+        done <<< "$missing"
+        failed=1
+    fi
+    forbidden=$(bt_motd_forbidden_words "$text")
+    if [ -z "$forbidden" ]; then
+        echo "motd: the login names no other distribution and no service we do not have"
+    else
+        echo "motd: the login still says:" >&2
+        while IFS= read -r line; do
+            printf '  %s\n' "$line" >&2
+        done <<< "$forbidden"
+        failed=1
+    fi
+    if [ "$failed" -ne 0 ]; then
+        echo "motd: this login is the one issue #6 describes. If the code" \
+             "for it is in this repository, the layer on the mirror was" \
+             "built before it: rebuild and publish the layer, then run" \
+             "this test again." >&2
+        return 1
+    fi
+    return 0
+}
+
 bt_diff_verdict() {
     # bt_diff_verdict CODE: interprets the exit code of keel diff
     # (docs/diff.md of the keel repository). 0 and 13 mean no drift.

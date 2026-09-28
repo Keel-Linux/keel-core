@@ -10,8 +10,9 @@ Actions and is a required status on the default branch).
 
 An appliance recipe, not a program: `Makefile` (2 lines: the Webmin
 firewall ports and the include of `turnkey.mk` from common), `plan/main`
-(1 line: `#include <turnkey/base>`), `conf.d/main` (a no-op: core needs no
-post-package configuration), the overlay and documentation. Every package,
+(1 line: `#include <turnkey/base>`), `conf.d/main` (the message of the
+day: the one thing an overlay cannot do, remove a file), the overlay and
+documentation. Every package,
 hook and conf script of the image comes from `common`, `fab` and the
 Debian and TurnKey archives, each measured in its own repository.
 
@@ -23,7 +24,10 @@ banner, its first piece of project-authored shell:
 | `etc/confconsole/services.txt` | the lines confconsole shows on its usage screen | data |
 | `etc/keel/banner.txt`, `etc/keel/banner-small.txt` | the mark in ASCII, the full one and the small one, installed unmodified from the design system (exports of `keel-mark.svg`; a change is a re-export, never an edit of the characters). Their size is whatever the exported files carry: the renderer measures each file, centres the mark it picked on the width of the terminal and falls back to the small mark and then to none as the screen shrinks, so a re-export at another size needs no change here | data |
 | `usr/lib/keel/banner.sh` | the banner renderer, pure functions (decision 0004) | 100 percent, see below |
+| `usr/lib/keel/motd.sh` | the rest of the login: the system information block, the backup line, the console line, and the two functions `conf.d/main` uses at build time, pure functions (decision 0004) | 100 percent, see below |
 | `etc/update-motd.d/00-keel-banner` | the thin main: terminal size, version file, `ip` probe, one call into the library | the LXC run |
+| `etc/update-motd.d/01-keel-sysinfo` | the thin main: run the system information command, cut its backup tail, print the backup line | the LXC run |
+| `etc/update-motd.d/08-keel-confconsole` | the thin main: print the console line | the LXC run |
 
 The banner is a drop-in named before the files `common`
 (`conf/turnkey.d/motd`) writes, so every word upstream prints keeps its
@@ -72,14 +76,39 @@ unit number.
 | --- | --- | --- |
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
-| `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `overlay/usr/lib/keel/banner.sh` | 100 percent (115 of 115 lines, 64 bats tests, kcov 43), measured on 2026-09-27 with the centring of the mark | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `tests/lib/boot-test-lib.sh` | 100 percent (167 of 167 lines, 48 bats tests, kcov 43), measured on 2026-09-28 with the login verdicts | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/banner.sh` | 100 percent (124 of 124 lines, 71 bats tests, kcov 43), measured on 2026-09-28 with the identity file it reads | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/motd.sh` | 100 percent (58 of 58 lines, 39 bats tests, kcov 43), measured on 2026-09-28 | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `conf.d/main` | 100 percent (8 of 8 lines, kcov 43), measured on 2026-09-28: the same bats file runs the conf script itself against a scratch drop-in directory | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of both project-authored files (94 bats tests in all); it
-is only ever raised. `tests/coverage.sh` measures each library against the
-bats file that exercises it and fails when any one is below the
-threshold.
+measured number of all four project-authored files (158 bats tests in
+all); it is only ever raised. `tests/coverage.sh` measures each library
+against the bats file that exercises it and fails when any one is below
+the threshold.
+
+## The login
+
+`conf.d/main` stopped being a no-op on 2026-09-28: it removes the two
+drop-ins `common` writes that speak for another product
+(`00-turnkey-sysinfo`, `08-turnkey-confconsole`) and checks that the
+directory was left with every Keel drop-in and none of anyone else's. An
+overlay cannot remove a file, which is why this is a conf script and not
+an overlay entry, and the order was read from the makefiles rather than
+assumed: `root.patched` applies the common overlays, runs the common conf
+scripts (`conf/turnkey.d/motd` among them), applies the common patches
+and removelists, then the product units, then the product overlay, and
+only then the product conf scripts. `root.patched/post`, where
+`/etc/turnkey_version` and `/etc/keel_version` are written, comes after
+all of it.
+
+What the login must look like is asserted against a booted container and
+not against a file: step 8 of the boot test renders `/etc/update-motd.d`
+with `run-parts`, which is what pam_motd does at an interactive login, and
+requires exactly one welcome, that it names Keel, that the system
+information block still carries the load, the memory, the processes, the
+swap, the usage of `/` and an address, and that neither `turnkey` nor
+`tklbam` appears anywhere in it.
 
 ## Gate
 
@@ -105,13 +134,23 @@ on every pull request and both are required on `master`:
 2. Fail the boot test on the three hooks that report an error, once each
    has been diagnosed: `15regen-sslcert`, `29tagid`, `95secupdates`.
 3. The recipe is no longer byte-identical to upstream: the console banner
-   of 2026-09-26 is the first project-authored addition to the overlay.
-   The M0 gate reference stands at 24c82ee, the commit both trees were
-   built from, and a rebuild now differs by exactly the four overlay
-   files listed above, all of them new paths, none of them an edit of an
-   upstream file. `plan/main`, `conf.d` and the `Makefile` are still
-   untouched. Any later change to those three comes with the boot test
-   green and, for a conf script, the decision 0004 treatment.
-4. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
+   of 2026-09-26 is the first project-authored addition to the overlay
+   and the login of 2026-09-28 is the second. The M0 gate reference
+   stands at 24c82ee, the commit both trees were built from, and a
+   rebuild now differs by the overlay files listed above, all of them new
+   paths and none of them an edit of an upstream file, plus `conf.d/main`,
+   which no longer does nothing: it removes the two drop-ins of another
+   product from `/etc/update-motd.d`. That is a deliberate divergence, it
+   is the subject of issue #6, and it comes with the decision 0004
+   treatment (a tested library, `overlay/usr/lib/keel/motd.sh`) and a
+   behavioural assertion in the boot test. `plan/main` and the `Makefile`
+   are still untouched.
+4. The layer on the mirror lags the repository whenever the overlay or a
+   conf script changes, and the boot test boots the layer. Step 8 fails
+   on a layer built before the login change with a message that says so
+   and names the remedy: rebuild and publish the layer. Nothing weakens
+   the assertion to make the gate green in the meantime, because a green
+   gate over the wrong login is the thing issue #6 is about.
+5. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
    collapse to one when the maintainer settles the name (brief section
    11); `BT_SPEC_PATHS` in the library and its test change in one line.

@@ -102,7 +102,20 @@ bt_wait_for "$BT_TIMEOUT" "$BT_INTERVAL" "the confconsole usage screen or SSH on
     first_boot_done
 log "first boot finished; ssh root@$addr"
 
-# 6. No drift between the declared spec and the booted root.
+# 6. What the operator is welcomed by. run-parts over the drop-in
+#    directory is what pam_motd does at an interactive login, so this is
+#    the login itself and not a file read off the disk (issue #6,
+#    docs/traps.md, "Asserting the configuration is not asserting the
+#    behaviour").
+log "rendering $BT_MOTD_DIR in $BT_NAME"
+motd=$(lxc attach -- run-parts "$BT_MOTD_DIR") || {
+    echo "boot-test: could not render $BT_MOTD_DIR in $BT_NAME" >&2
+    exit 1
+}
+printf '%s\n' "$motd"
+bt_motd_verdict "$motd"
+
+# 7. No drift between the declared spec and the booted root.
 set +e
 keel diff --root "$BT_ROOTFS" --spec "$BT_SPEC"
 code=$?

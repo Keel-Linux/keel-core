@@ -1,3 +1,32 @@
+keel-core-19.0 (2) keel; urgency=low
+
+  * The login welcomes the operator once, as Keel:
+
+    - Remove the two message of the day drop-ins that speak for another
+      product. /etc/update-motd.d/00-turnkey-sysinfo welcomed the operator
+      a second time, to a distribution this image is not, and ended by
+      telling them to run tklbam-init against a service this project does
+      not host; 08-turnkey-confconsole pointed at another project's
+      documentation. Both are written at build time by common and are
+      removed by conf.d/main, which an overlay cannot do.
+
+    - Keep every fact the old block gave. 01-keel-sysinfo prints the
+      system load, the memory usage, the processes, the swap usage, the
+      usage of / and an address per interface, from the same command as
+      before, cutting the backup client's block off the end of it by the
+      shape of the output rather than by the words that block uses today.
+
+    - Say one true thing about backup in its place: not configured, no
+      backup service yet, and where it will be configured when there is
+      one. 08-keel-confconsole points at this project's documentation of
+      its own console.
+
+    - Read /etc/keel_version for the appliance name and version, falling
+      back to /etc/turnkey_version on a layer built before the Keel file
+      existed.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Mon, 28 Sep 2026 03:10:00 +0000
+
 keel-core-19.0 (1) keel; urgency=low
 
   * Console banner (the Keel mark above the message of the day):
