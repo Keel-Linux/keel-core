@@ -14,7 +14,7 @@
 # recovery shell and "ssh -T" all render it. The confconsole line
 # upstream wrote used tput to embolden the command; this one does not.
 #
-# Why these files exist at all (issue #6). common (conf/turnkey.d/motd)
+# Why these files exist at all (issue #7). common (conf/turnkey.d/motd)
 # writes /etc/update-motd.d/00-turnkey-sysinfo, which execs
 # turnkey-sysinfo's own motd script: it welcomes the operator a second
 # time, to a distribution this image is not, and it ends with a block
@@ -60,10 +60,19 @@ KEEL_MOTD_FOREIGN_NAME='turnkey'
 # tail through silently, which is the defect this whole change is about.
 # The shape is fixed by the command itself: one header, one blank line,
 # the table, and any tail after a second blank line.
+#
+# The count starts at the first line with something on it. Counting from
+# the first line read would make a single blank line in front of the
+# header the first blank, the one after the header the second, and the
+# whole table would disappear; anchoring it costs one condition and makes
+# "the blank line that ends the table" true rather than true by luck.
 keel_motd_system_block() {
-    local line blanks=0
+    local line blanks=0 started=0
     while IFS= read -r line || [ -n "$line" ]; do
         if [ -z "$line" ]; then
+            if [ "$started" -eq 0 ]; then
+                continue
+            fi
             blanks=$((blanks + 1))
             if [ "$blanks" -ge 2 ]; then
                 return 0
@@ -71,9 +80,21 @@ keel_motd_system_block() {
             printf '\n'
             continue
         fi
+        started=1
         printf '%s\n' "$line"
     done
     return 0
+}
+
+# keel_motd_unavailable_line
+# What stands in for the system information when the command that prints
+# it is not on the machine. Saying nothing would leave a login that looks
+# complete and is not; a machine that loses the package after the build
+# is the case the boot test cannot catch. The command is not named: its
+# name is a separate decision and printing the one it has today would put
+# another product's name back in the login.
+keel_motd_unavailable_line() {
+    printf 'System information:  not available on this machine\n'
 }
 
 # keel_motd_indent [LEVEL]

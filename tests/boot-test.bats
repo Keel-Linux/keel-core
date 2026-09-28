@@ -335,6 +335,37 @@ Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
 OUT
 }
 
+# The same appliance on a bridge with no IPv4. turnkey-sysinfo reports an
+# address per interface from netinfo.InterfaceInfo.address, which is
+# SIOCGIFADDR on an AF_INET socket, so with no IPv4 anywhere it prints the
+# single row "Networking not configured" and the string "IP address"
+# never appears. The machine is correct and reachable; the banner above
+# prints the address it answers on.
+motd_after_ipv6_only() {
+    cat <<'OUT'
+
+Keel Linux core 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5::a6e]
+IPv6 SSH:  root@2804:710:d0:5::a6e
+
+  System information for Mon Sep 28 02:20:44 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    39                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   Networking not configured
+
+  Backup:  not configured. Keel has no backup service yet; when one
+           arrives it is configured from confconsole.
+
+    For advanced configuration run:  confconsole
+
+  For more info see: https://github.com/keel-linux/confconsole
+
+Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
 @test "motd_greetings: the login before this change welcomed twice" {
     run bt_motd_greetings "$(motd_before)"
     [ "${#lines[@]}" -eq 2 ]
@@ -372,7 +403,59 @@ OUT
 
 @test "motd_missing_fields: an empty login is missing all of them" {
     run bt_motd_missing_fields ""
-    [ "${#lines[@]}" -eq 6 ]
+    [ "${#lines[@]}" -eq "${#BT_MOTD_FIELDS[@]}" ]
+    [ "${#lines[@]}" -eq 5 ]
+}
+
+@test "motd_missing_fields: an appliance with no IPv4 loses no field" {
+    # The five labels the command always prints; the address row is not
+    # one of them, because it is the one thing that depends on the
+    # machine having an IPv4 address.
+    run bt_motd_missing_fields "$(motd_after_ipv6_only)"
+    [ -z "$output" ]
+}
+
+@test "motd_network_row: an address row counts" {
+    run bt_motd_network_row "$(motd_after)"
+    [ "$status" -eq 0 ]
+}
+
+@test "motd_network_row: the row the command prints with no IPv4 counts too" {
+    run bt_motd_network_row "$(motd_after_ipv6_only)"
+    [ "$status" -eq 0 ]
+}
+
+@test "motd_network_row: losing the row entirely does not count" {
+    text=$(motd_after | sed 's/IP address for eth0: 10.88.5.69//')
+    run bt_motd_network_row "$text"
+    [ "$status" -eq 1 ]
+}
+
+@test "motd_verdict: an appliance with no IPv4 passes" {
+    # The scenario the IPv4 assumption would have failed: an IPv6-only
+    # bridge, a machine that is entirely correct.
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2804:710:d0:5::a6e
+    [ "$status" -eq 0 ]
+    [[ $output == *"reachable"* ]]
+}
+
+@test "motd_verdict: the address the machine answers on must be in the login" {
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1
+    [ "$status" -eq 1 ]
+    [[ $output == *2001:db8::1* ]]
+}
+
+@test "motd_verdict: without an address it checks the rest" {
+    run bt_motd_verdict "$(motd_after)"
+    [ "$status" -eq 0 ]
+    [[ $output != *reachable* ]]
+}
+
+@test "motd_verdict: losing the whole address row fails" {
+    text=$(motd_after | sed 's/IP address for eth0: 10.88.5.69//')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"no address at all"* ]]
 }
 
 @test "motd_forbidden_words: the login before this change said both" {
@@ -459,6 +542,32 @@ CALLER
     run "$STUBS/caller"
     [ "$status" -eq 0 ]
     [[ $output == *"verdict exited 1"* ]]
+}
+
+@test "checks_verdict: every check green passes and says so" {
+    run bt_checks_verdict login:0 drift:0
+    [ "$status" -eq 0 ]
+    [[ $output == *"2 checks"* ]]
+}
+
+@test "checks_verdict: a failed check is named and the run fails" {
+    run bt_checks_verdict login:1 drift:0
+    [ "$status" -eq 1 ]
+    [[ $output == *login* ]]
+    [[ $output != *"drift failed"* ]]
+}
+
+@test "checks_verdict: every failure is named, not just the first" {
+    run bt_checks_verdict login:1 drift:14
+    [ "$status" -eq 1 ]
+    [[ $output == *login* ]]
+    [[ $output == *drift* ]]
+}
+
+@test "checks_verdict: no checks at all is a failure, not a pass" {
+    run bt_checks_verdict
+    [ "$status" -eq 1 ]
+    [[ $output == *"no check"* ]]
 }
 
 @test "diff_verdict: 0 and 13 pass, everything else fails with a message" {

@@ -141,6 +141,35 @@ OUT
     [ -z "${output// /}" ]
 }
 
+@test "system_block: a leading blank line does not cost the table" {
+    # The rule is the blank line that ends the table, so the count starts
+    # at the first line with something on it: a blank before the header
+    # must not make the blank after it the second one.
+    output=$( (printf '\n'; sysinfo_as_root) | keel_motd_system_block)
+    split_output
+    [ "${lines[0]}" = "System information for Mon Sep 28 02:20:44 2026 (UTC+0000)" ]
+    [[ $output == *"Swap usage:    6.3%"* ]]
+    [[ $output != *TKLBAM* ]]
+}
+
+@test "system_block: several leading blank lines cost nothing either" {
+    output=$( (printf '\n\n\n'; sysinfo_as_root) | keel_motd_system_block)
+    [[ $output == *"Usage of /:"* ]]
+    [[ $output != *tklbam* ]]
+}
+
+@test "unavailable_line: says so rather than printing nothing" {
+    output=$(keel_motd_unavailable_line)
+    [[ $output == *"System information"* ]]
+    [[ $output == *"not available"* ]]
+}
+
+@test "unavailable_line: names no command, because the name is not settled" {
+    output=$(keel_motd_unavailable_line)
+    [[ ${output,,} != *turnkey* ]]
+    [[ ${output,,} != *sysinfo* ]]
+}
+
 # indenting
 
 @test "indent: every line moves right by the level it is given" {

@@ -104,21 +104,34 @@ log "first boot finished; ssh root@$addr"
 
 # 6. What the operator is welcomed by. run-parts over the drop-in
 #    directory is what pam_motd does at an interactive login, so this is
-#    the login itself and not a file read off the disk (issue #6,
+#    the login itself and not a file read off the disk (issue #7,
 #    docs/traps.md, "Asserting the configuration is not asserting the
-#    behaviour").
+#    behaviour"). The address the container answers on is passed in, so
+#    "the operator is told how to reach this machine" is checked against
+#    the machine and not against a word.
 log "rendering $BT_MOTD_DIR in $BT_NAME"
 motd=$(lxc attach -- run-parts "$BT_MOTD_DIR") || {
     echo "boot-test: could not render $BT_MOTD_DIR in $BT_NAME" >&2
     exit 1
 }
 printf '%s\n' "$motd"
-bt_motd_verdict "$motd"
+login_rc=0
+bt_motd_verdict "$motd" "$addr" || login_rc=$?
 
 # 7. No drift between the declared spec and the booted root.
 set +e
 keel diff --root "$BT_ROOTFS" --spec "$BT_SPEC"
 code=$?
 set -e
-bt_diff_verdict "$code"
+drift_rc=0
+bt_diff_verdict "$code" || drift_rc=$?
+
+# 8. Both verdicts, collected rather than short circuited: a red login
+#    check waiting for a layer rebuild must not cost the run the drift
+#    check, which was the only behavioural assertion this job had before
+#    the login one existed. "|| rc=$?" and never "; rc=$?", because the
+#    non-zero return of a verdict is an answer and errexit is on
+#    (docs/traps.md, "A bats suite cannot see a library that kills its
+#    caller").
+bt_checks_verdict "login:$login_rc" "drift:$drift_rc"
 log "$BT_APPLIANCE boot test passed"

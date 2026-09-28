@@ -36,10 +36,14 @@ completes headless from an instance spec, and the machine matches the spec.
   TurnKey ones). The system information is fed in as text captured from a
   running appliance, and the drop-in directory is a scratch directory, so
   nothing here needs an appliance.
-- `coverage.sh`: runs each bats file under kcov and fails when any measured
-  file is below `COVERAGE_THRESHOLD` (default 95). `conf.d/main` is measured
-  too: `motd.bats` runs the conf script itself, with `MOTD_DIR` and
-  `KEEL_MOTD_LIB` pointed at a scratch directory.
+- `coverage.sh`: one kcov run per bats file, however many files that file
+  measures, and a verdict per measured file; fails when any is below
+  `COVERAGE_THRESHOLD` (default 95). `conf.d/main` is measured in
+  `motd.bats`'s run, which executes the conf script itself with `MOTD_DIR`
+  and `KEEL_MOTD_LIB` pointed at a scratch directory. Those two are the
+  only environment overrides left: the login drop-ins write their library
+  path out, because pam_motd runs them with the privileges of the PAM
+  stack and a sourced path is executed rather than read.
 - `instance.yaml`: the spec the container boots from. IPv6 only, address
   from the bridge, no certificate request, no network at first boot.
 
@@ -74,7 +78,7 @@ the mark and keeps the addresses. On an appliance the same block comes from
 The rest of the login is sourceable in the same way:
 
     bash -c 'source overlay/usr/lib/keel/motd.sh
-             turnkey-sysinfo | keel_motd_system_block \
+             "$KEEL_MOTD_SYSINFO_COMMAND" | keel_motd_system_block \
                  | keel_motd_indent "$KEEL_MOTD_INDENT"
              echo
              keel_motd_backup_lines | keel_motd_indent "$KEEL_MOTD_INDENT"
@@ -136,11 +140,18 @@ What it does, in order:
    `run-parts`, which is what pam_motd does at an interactive login, and
    checks the result: exactly one welcome, it names Keel, the system
    information block still carries the load, the memory, the processes,
-   the swap, the usage of `/` and an address, and the login says neither
-   `turnkey` nor `tklbam` (issue #6). The rendered block is printed, so a
-   failure is readable in the job log.
+   the swap and the usage of `/`, it still reports on the network (an
+   address row, or the `Networking not configured` the command prints on
+   a machine with no IPv4), the login carries the address the container
+   actually answers on, and it says neither `turnkey` nor `tklbam`
+   (issue #7). The rendered block is printed, so a failure is readable in
+   the job log.
 9. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or
    13 (no drift) passes, 14 (drift) or any other code fails.
+10. Reports both verdicts together and fails if either did. They are
+    collected rather than short circuited, so a login check that is
+    deliberately red while the layer is rebuilt does not cost the run the
+    drift check.
 
 Measured on `keel-lxc-1` (2 GB of layer, 6 vCPU): pull 3 s from the mirror
 on the same host, assemble 13 s, boot and first boot 10 s.

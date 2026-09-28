@@ -257,12 +257,24 @@ bt_random_password() {
 # the login the operator gets and not a file read off the disk.
 BT_MOTD_DIR=/etc/update-motd.d
 # A line that names a distribution to whoever just logged in: the welcome.
-# There must be exactly one and it must be ours (issue #6).
+# There must be exactly one and it must be ours (issue #7).
 BT_MOTD_GREETINGS=("Welcome to " "Keel Linux" "Keel GNU/Linux" "TurnKey GNU/Linux")
 BT_MOTD_KEEL="Keel"
-# The facts the banner gave before this change and must still give: losing
-# the system information block would be a regression.
-BT_MOTD_FIELDS=("System load:" "Memory usage:" "Processes:" "Swap usage:" "Usage of /:" "IP address")
+# The facts the block gives on every machine, whatever it is attached to:
+# losing any of them would be a regression.
+BT_MOTD_FIELDS=("System load:" "Memory usage:" "Processes:" "Swap usage:" "Usage of /:")
+# The address row is the one line of the block that depends on the
+# machine, so it is checked apart from the five above and by shape rather
+# than by family. The command reports an address per interface from
+# netinfo.InterfaceInfo.address, which is SIOCGIFADDR on an AF_INET
+# socket: IPv4 only. On an appliance with no IPv4, which is what
+# tests/instance.yaml declares and what this distribution is built for,
+# it prints "Networking not configured" instead, and requiring the words
+# "IP address" would fail a machine that is entirely correct. Either row
+# means the block still reports on the network; that the operator is
+# given an address to reach the machine by is asserted separately, from
+# the address the container actually answers on.
+BT_MOTD_NETWORK_ROWS=("IP address for" "Networking not configured")
 # What a Keel login must not say: the distribution this image is not, and
 # the backup service it does not have (decisions 0002 and 0014).
 BT_MOTD_FORBIDDEN=(turnkey tklbam)
@@ -295,6 +307,19 @@ bt_motd_missing_fields() {
     done
 }
 
+bt_motd_network_row() {
+    # bt_motd_network_row TEXT: true when the system information block
+    # still reports on the network, in either of the two shapes the
+    # command can print.
+    local text=${1-} row
+    for row in "${BT_MOTD_NETWORK_ROWS[@]}"; do
+        case $text in
+            *"$row"*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 bt_motd_forbidden_words() {
     # bt_motd_forbidden_words TEXT: the words TEXT says and must not,
     # matched without regard to case so turnkeylinux.org counts.
@@ -308,12 +333,15 @@ bt_motd_forbidden_words() {
 }
 
 bt_motd_verdict() {
-    # bt_motd_verdict TEXT: the verdicts on what an interactive login
-    # prints. Prints one line per verdict and returns 1 when any of them
-    # failed. This is the assertion that closes issue #6, and it is
+    # bt_motd_verdict TEXT [ADDRESS]: the verdicts on what an interactive
+    # login prints. Prints one line per verdict and returns 1 when any of
+    # them failed. This is the assertion that closes issue #7, and it is
     # behavioural: TEXT is what the drop-in chain produced in the running
-    # container, not the content of a file.
-    local text=${1-} failed=0 greetings count missing forbidden line
+    # container, not the content of a file. ADDRESS, when given, is the
+    # address the container answers on, and the login has to carry it:
+    # that is what makes "the operator is told how to reach this machine"
+    # an assertion about the machine rather than about a word.
+    local text=${1-} address=${2-} failed=0 greetings count missing forbidden line
     if [ -z "${text//[[:space:]]/}" ]; then
         echo "motd: the login printed nothing" >&2
         return 1
@@ -353,6 +381,24 @@ bt_motd_verdict() {
         done <<< "$missing"
         failed=1
     fi
+    if bt_motd_network_row "$text"; then
+        echo "motd: the system information block still reports on the network"
+    else
+        echo "motd: the system information block reports no address at all" >&2
+        failed=1
+    fi
+    if [ -n "$address" ]; then
+        case $text in
+            *"$address"*)
+                echo "motd: the login says the machine is reachable at $address"
+                ;;
+            *)
+                echo "motd: the login does not carry $address, the address" \
+                     "this machine answers on" >&2
+                failed=1
+                ;;
+        esac
+    fi
     forbidden=$(bt_motd_forbidden_words "$text")
     if [ -z "$forbidden" ]; then
         echo "motd: the login names no other distribution and no service we do not have"
@@ -364,7 +410,7 @@ bt_motd_verdict() {
         failed=1
     fi
     if [ "$failed" -ne 0 ]; then
-        echo "motd: this login is the one issue #6 describes. If the code" \
+        echo "motd: this login is the one issue #7 describes. If the code" \
              "for it is in this repository, the layer on the mirror was" \
              "built before it: rebuild and publish the layer, then run" \
              "this test again." >&2
@@ -383,4 +429,32 @@ bt_diff_verdict() {
         2|3) echo "keel diff: the spec is unreadable or invalid (exit $1)" >&2; return 1 ;;
         *) echo "keel diff: failed with exit $1" >&2; return 1 ;;
     esac
+}
+
+bt_checks_verdict() {
+    # bt_checks_verdict NAME:CODE ...: the verdict of the whole run.
+    # Returns 1 when any check failed, after naming every one that did.
+    # The boot test collects its checks and calls this at the end rather
+    # than exiting at the first failure, so one deliberately red
+    # assertion never hides the result of another: while the login check
+    # waits for a layer rebuild, the drift check still reports.
+    local check name code failed=0 total=0
+    for check in "$@"; do
+        name=${check%:*}
+        code=${check##*:}
+        total=$((total + 1))
+        if [ "$code" -ne 0 ]; then
+            echo "boot-test: the $name check failed (exit $code)" >&2
+            failed=1
+        fi
+    done
+    if [ "$total" -eq 0 ]; then
+        echo "boot-test: no check was run, which is not a pass" >&2
+        return 1
+    fi
+    if [ "$failed" -ne 0 ]; then
+        return 1
+    fi
+    echo "boot-test: $total checks passed"
+    return 0
 }

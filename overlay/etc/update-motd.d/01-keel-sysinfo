@@ -6,18 +6,27 @@
 # (conf/turnkey.d/motd) writes and conf.d/main of this recipe removes.
 # That file welcomed the operator a second time, to another distribution,
 # and ended with a block telling them to initialise a backup service this
-# project does not host (issue #6, decisions 0002 and 0014). The half of
-# it worth keeping is the system information the turnkey-sysinfo command
-# prints: the load, the memory, the processes, the swap, the usage of /
-# and an address per interface. That command is called by the name it has
-# today.
+# project does not host (issue #7, decisions 0002 and 0014). The half of
+# it worth keeping is the system information the system information
+# command prints: the load, the memory, the processes, the swap, the
+# usage of / and an address per interface. That command is called by the
+# name it has today.
 #
 # Logic is in /usr/lib/keel/motd.sh (decision 0004); this file only
 # collects the facts and prints what the library returns.
+#
+# The library path is written out rather than taken from the environment.
+# pam_motd runs this at every login with the privileges of the PAM stack,
+# and a sourced path is executed, not read: an appliance that one day
+# accepts KEEL_* over SSH, or a sudo -E wrapper, would otherwise let the
+# caller choose what runs. Nothing here needs the override either, since
+# tests/motd.bats sources the library directly; conf.d/main keeps it,
+# because that runs in a chroot at build time and is where the test
+# affordance is used.
 
 set -u
 
-KEEL_MOTD_LIB="${KEEL_MOTD_LIB:-/usr/lib/keel/motd.sh}"
+KEEL_MOTD_LIB=/usr/lib/keel/motd.sh
 
 [ -r "$KEEL_MOTD_LIB" ] || exit 0
 # shellcheck source=../../usr/lib/keel/motd.sh
@@ -27,8 +36,10 @@ if command -v "$KEEL_MOTD_SYSINFO_COMMAND" > /dev/null 2>&1; then
     "$KEEL_MOTD_SYSINFO_COMMAND" 2>/dev/null \
         | keel_motd_system_block \
         | keel_motd_indent "$KEEL_MOTD_INDENT"
-    echo
+else
+    keel_motd_unavailable_line | keel_motd_indent "$KEEL_MOTD_INDENT"
 fi
+echo
 
 keel_motd_backup_lines | keel_motd_indent "$KEEL_MOTD_INDENT"
 echo

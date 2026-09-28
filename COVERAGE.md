@@ -76,13 +76,13 @@ unit number.
 | --- | --- | --- |
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
-| `tests/lib/boot-test-lib.sh` | 100 percent (167 of 167 lines, 48 bats tests, kcov 43), measured on 2026-09-28 with the login verdicts | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `tests/lib/boot-test-lib.sh` | 100 percent (197 of 197 lines, 60 bats tests, kcov 43), measured on 2026-09-28 with the login verdicts | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `overlay/usr/lib/keel/banner.sh` | 100 percent (124 of 124 lines, 71 bats tests, kcov 43), measured on 2026-09-28 with the identity file it reads | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `overlay/usr/lib/keel/motd.sh` | 100 percent (58 of 58 lines, 39 bats tests, kcov 43), measured on 2026-09-28 | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `conf.d/main` | 100 percent (8 of 8 lines, kcov 43), measured on 2026-09-28: the same bats file runs the conf script itself against a scratch drop-in directory | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/motd.sh` | 100 percent (62 of 62 lines, 43 bats tests, kcov 43), measured on 2026-09-28 | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `conf.d/main` | 100 percent (8 of 8 lines, kcov 43), measured on 2026-09-28 in the same kcov run as `motd.sh`, which executes the conf script against a scratch drop-in directory | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of all four project-authored files (158 bats tests in
+measured number of all four project-authored files (174 bats tests in
 all); it is only ever raised. `tests/coverage.sh` measures each library
 against the bats file that exercises it and fails when any one is below
 the threshold.
@@ -94,21 +94,63 @@ drop-ins `common` writes that speak for another product
 (`00-turnkey-sysinfo`, `08-turnkey-confconsole`) and checks that the
 directory was left with every Keel drop-in and none of anyone else's. An
 overlay cannot remove a file, which is why this is a conf script and not
-an overlay entry, and the order was read from the makefiles rather than
-assumed: `root.patched` applies the common overlays, runs the common conf
-scripts (`conf/turnkey.d/motd` among them), applies the common patches
-and removelists, then the product units, then the product overlay, and
-only then the product conf scripts. `root.patched/post`, where
-`/etc/turnkey_version` and `/etc/keel_version` are written, comes after
-all of it.
+an overlay entry.
+
+The order was read from `root.patched/body` in `/usr/share/fab/product.mk`
+**of the build host**, fab `1.1.1+keel1`, which orders the unit phases
+differently from upstream fab:
+
+1. common overlays
+2. common conf scripts (`conf/turnkey.d/motd` among them)
+3. common patches
+4. unit overlays
+5. unit conf scripts
+6. unit removelists
+7. common removelists
+8. the product overlay
+9. the product conf scripts (`conf.d/main`)
+10. the product patches, the product removelist, the initramfs, the
+    common removelists-final
+11. `root.patched/post`, where `/etc/turnkey_version` and
+    `/etc/keel_version` are written
+
+Two positions carry this change, 2 before 8 and 8 before 9. A recipe with
+units should note 5: unit conf scripts run before the product overlay,
+not after it.
+
+The limit of putting the prune in one recipe: it is enough for the way
+Keel ships, because `bt-layer` subtracts the parent's `common_conf` from
+the child's, so no appliance built on core re-runs
+`conf/turnkey.d/motd` and core's removals are inherited by every layer
+above it. A plain `make` of a non-core recipe, with the full
+`COMMON_CONF` and no parent, writes the drop-ins again and has no prune
+to take them away; a recipe built that way needs the same two calls in
+its own `conf.d`.
 
 What the login must look like is asserted against a booted container and
-not against a file: step 8 of the boot test renders `/etc/update-motd.d`
+not against a file: step 6 of the boot test renders `/etc/update-motd.d`
 with `run-parts`, which is what pam_motd does at an interactive login, and
 requires exactly one welcome, that it names Keel, that the system
 information block still carries the load, the memory, the processes, the
-swap, the usage of `/` and an address, and that neither `turnkey` nor
-`tklbam` appears anywhere in it.
+swap and the usage of `/`, that it still reports on the network, that the
+login carries the address the container actually answers on, and that
+neither `turnkey` nor `tklbam` appears anywhere in it.
+
+The address is checked from the machine and not from a word, because the
+address row of the system information block is IPv4 only: it comes from
+`netinfo.InterfaceInfo.address`, which is `SIOCGIFADDR` on an `AF_INET`
+socket, and on a machine with no IPv4 the command prints `Networking not
+configured` instead. `tests/instance.yaml` declares an IPv6-only
+appliance, and the gate passes today only because lxcbr0 also hands out
+IPv4. Requiring the words "IP address" would fail an IPv6-only appliance
+that is entirely correct, so the block is required to carry either row and
+the address the operator is given is asserted against the one the
+container answers on, which the banner prints IPv6 first.
+
+The login verdict and the drift verdict are collected and reported
+together at the end rather than short circuited, so the login check being
+deliberately red while the layer is rebuilt never costs the run the drift
+check.
 
 ## Gate
 
@@ -141,7 +183,7 @@ on every pull request and both are required on `master`:
    paths and none of them an edit of an upstream file, plus `conf.d/main`,
    which no longer does nothing: it removes the two drop-ins of another
    product from `/etc/update-motd.d`. That is a deliberate divergence, it
-   is the subject of issue #6, and it comes with the decision 0004
+   is the subject of issue #7, and it comes with the decision 0004
    treatment (a tested library, `overlay/usr/lib/keel/motd.sh`) and a
    behavioural assertion in the boot test. `plan/main` and the `Makefile`
    are still untouched.
@@ -150,7 +192,7 @@ on every pull request and both are required on `master`:
    on a layer built before the login change with a message that says so
    and names the remedy: rebuild and publish the layer. Nothing weakens
    the assertion to make the gate green in the meantime, because a green
-   gate over the wrong login is the thing issue #6 is about.
+   gate over the wrong login is the thing issue #7 is about.
 5. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
    collapse to one when the maintainer settles the name (brief section
    11); `BT_SPEC_PATHS` in the library and its test change in one line.

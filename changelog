@@ -25,6 +25,37 @@ keel-core-19.0 (2) keel; urgency=low
       back to /etc/turnkey_version on a layer built before the Keel file
       existed.
 
+    - Say so rather than printing nothing when the system information
+      command is not on the machine. The command is not named in that
+      line: its name is a separate decision, and printing the one it has
+      today would put another product's name back in the login.
+
+    - The three login drop-ins write the path of the library they source
+      out in full instead of taking it from the environment. pam_motd
+      runs them with the privileges of the PAM stack and a sourced path
+      is executed, not read; the build-time conf script keeps the
+      override, because it runs in a chroot and is where the tests use
+      it.
+
+    - The order the removal depends on, read from root.patched/body in
+      /usr/share/fab/product.mk of the build host (fab 1.1.1+keel1, whose
+      unit phases are ordered differently from upstream fab): common
+      overlays, common conf scripts, common patches, unit overlays, unit
+      conf scripts, unit removelists, common removelists, the product
+      overlay, the product conf scripts, the product patches, the product
+      removelist, the initramfs, the common removelists-final, then
+      root.patched/post. The two positions this change rests on are that
+      the common conf scripts run before the product overlay and that the
+      product overlay lands before the product conf scripts. A recipe
+      with units should note that unit conf scripts run before the
+      product overlay, not after it.
+
+    - Only core prunes. bt-layer subtracts the parent's common_conf from
+      the child's, so no appliance built on core re-runs
+      conf/turnkey.d/motd and core's removals are inherited; a plain make
+      of a non-core recipe writes the drop-ins again and needs the same
+      two calls in its own conf.d.
+
  -- Marcos Méndez <mendez.foto@gmail.com>  Mon, 28 Sep 2026 03:10:00 +0000
 
 keel-core-19.0 (1) keel; urgency=low
