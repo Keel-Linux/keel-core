@@ -142,8 +142,8 @@ What it does, in order:
    information block still carries the load, the memory, the processes,
    the swap and the usage of `/`, it still reports on the network (an
    address row, or the `Networking not configured` the command prints on
-   a machine with no IPv4), the login carries the address the container
-   actually answers on, and it says neither `turnkey` nor `tklbam`
+   a machine with no IPv4), the login carries one of the addresses the
+   container actually answers on, and it says neither `turnkey` nor `tklbam`
    (issue #7). The rendered block is printed, so a failure is readable in
    the job log.
 9. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or

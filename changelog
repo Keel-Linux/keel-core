@@ -37,6 +37,10 @@ keel-core-19.0 (2) keel; urgency=low
       override, because it runs in a chroot and is where the tests use
       it.
 
+    - The login is checked against every address the machine answers on
+      and not the first one a test discovered: a machine can hold several
+      and which of them the banner shows is the banner's own rule.
+
     - The order the removal depends on, read from root.patched/body in
       /usr/share/fab/product.mk of the build host (fab 1.1.1+keel1, whose
       unit phases are ordered differently from upstream fab): common

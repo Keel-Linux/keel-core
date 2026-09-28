@@ -366,6 +366,28 @@ Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
 OUT
 }
 
+@test "global_ipv6_all: every global address, in the order lxc-info gave" {
+    run bt_global_ipv6_all <<< $'Name: c\nIP:  10.0.3.4\nIP:  fe80::1\nIP:  2001:db8::2\nIP:  ::1\nIP:  2001:db8::1'
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = 2001:db8::2 ]
+    [ "${lines[1]}" = 2001:db8::1 ]
+    [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "global_ipv6_all: no global address fails and prints nothing" {
+    run bt_global_ipv6_all <<< $'IP:  10.0.3.4\nIP:  fe80::1'
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+@test "container_ipv6_all: asks lxc-info for the container's addresses" {
+    stub_lxc_info $'Name: keel-core-boot-test\nIP:  10.0.3.4\nIP:  2001:db8::1\nIP:  2001:db8::2'
+    run bt_container_ipv6_all keel-core-boot-test /var/lib/lxc
+    [ "$status" -eq 0 ]
+    [ "${#lines[@]}" -eq 2 ]
+    grep -q -- "-P /var/lib/lxc -n keel-core-boot-test -i" "$STUBS/lxc-info.calls"
+}
+
 @test "motd_greetings: the login before this change welcomed twice" {
     run bt_motd_greetings "$(motd_before)"
     [ "${#lines[@]}" -eq 2 ]
@@ -443,6 +465,23 @@ OUT
     run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1
     [ "$status" -eq 1 ]
     [[ $output == *2001:db8::1* ]]
+}
+
+@test "motd_verdict: any of the machine's addresses satisfies it" {
+    # lxc-info lists every address and the banner picks one by its own
+    # rule (static before dynamic, privacy last), so the one the test
+    # discovered first is not always the one the login shows. Carrying
+    # any of them is the assertion.
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1 2804:710:d0:5::a6e
+    [ "$status" -eq 0 ]
+    [[ $output == *"reachable at 2804:710:d0:5::a6e"* ]]
+}
+
+@test "motd_verdict: none of the machine's addresses in the login fails" {
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1 2001:db8::2
+    [ "$status" -eq 1 ]
+    [[ $output == *2001:db8::1* ]]
+    [[ $output == *2001:db8::2* ]]
 }
 
 @test "motd_verdict: without an address it checks the rest" {

@@ -106,17 +106,19 @@ log "first boot finished; ssh root@$addr"
 #    directory is what pam_motd does at an interactive login, so this is
 #    the login itself and not a file read off the disk (issue #7,
 #    docs/traps.md, "Asserting the configuration is not asserting the
-#    behaviour"). The address the container answers on is passed in, so
-#    "the operator is told how to reach this machine" is checked against
-#    the machine and not against a word.
+#    behaviour"). Every address the container answers on is passed in,
+#    so "the operator is told how to reach this machine" is checked
+#    against the machine and not against a word; all of them, because
+#    which one the banner shows is the banner's choice.
 log "rendering $BT_MOTD_DIR in $BT_NAME"
 motd=$(lxc attach -- run-parts "$BT_MOTD_DIR") || {
     echo "boot-test: could not render $BT_MOTD_DIR in $BT_NAME" >&2
     exit 1
 }
 printf '%s\n' "$motd"
+mapfile -t addresses < <(bt_container_ipv6_all "$BT_NAME" "$BT_LXC_PATH")
 login_rc=0
-bt_motd_verdict "$motd" "$addr" || login_rc=$?
+bt_motd_verdict "$motd" "${addresses[@]+"${addresses[@]}"}" || login_rc=$?
 
 # 7. No drift between the declared spec and the booted root.
 set +e

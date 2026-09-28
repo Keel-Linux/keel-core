@@ -165,9 +165,33 @@ bt_global_ipv6() {
     return 1
 }
 
+bt_global_ipv6_all() {
+    # stdin: the output of lxc-info -i. Prints every global IPv6 address,
+    # in the order given; returns 1 when there is none. A machine can
+    # hold several (a SLAAC address and a privacy one, a static and a
+    # dynamic), and which of them a program shows is that program's
+    # choice: the banner picks static before dynamic and privacy last.
+    # So a check that the login names the machine's address has to hold
+    # all of them, not the one this function happened to see first.
+    local label addr _ found=1
+    while read -r label addr _; do
+        [ "$label" = "IP:" ] || continue
+        if bt_is_global_ipv6 "$addr"; then
+            printf '%s\n' "$addr"
+            found=0
+        fi
+    done
+    return "$found"
+}
+
 bt_container_ipv6() {
     # bt_container_ipv6 NAME LXCPATH: the container's first global IPv6.
     lxc-info -P "$2" -n "$1" -i 2>/dev/null | bt_global_ipv6
+}
+
+bt_container_ipv6_all() {
+    # bt_container_ipv6_all NAME LXCPATH: every global IPv6 it holds.
+    lxc-info -P "$2" -n "$1" -i 2>/dev/null | bt_global_ipv6_all
 }
 
 bt_now() {
@@ -337,11 +361,16 @@ bt_motd_verdict() {
     # login prints. Prints one line per verdict and returns 1 when any of
     # them failed. This is the assertion that closes issue #7, and it is
     # behavioural: TEXT is what the drop-in chain produced in the running
-    # container, not the content of a file. ADDRESS, when given, is the
-    # address the container answers on, and the login has to carry it:
-    # that is what makes "the operator is told how to reach this machine"
-    # an assertion about the machine rather than about a word.
-    local text=${1-} address=${2-} failed=0 greetings count missing forbidden line
+    # container, not the content of a file. ADDRESS..., when given, are
+    # the addresses the container answers on, and the login has to carry
+    # one of them: that is what makes "the operator is told how to reach
+    # this machine" an assertion about the machine rather than about a
+    # word. Several, because a machine can hold several and which one the
+    # banner shows is the banner's choice.
+    local text=${1-} failed=0 greetings count missing forbidden line
+    local address found_address=""
+    shift || true
+    local -a addresses=("$@")
     if [ -z "${text//[[:space:]]/}" ]; then
         echo "motd: the login printed nothing" >&2
         return 1
@@ -387,17 +416,25 @@ bt_motd_verdict() {
         echo "motd: the system information block reports no address at all" >&2
         failed=1
     fi
-    if [ -n "$address" ]; then
-        case $text in
-            *"$address"*)
-                echo "motd: the login says the machine is reachable at $address"
-                ;;
-            *)
-                echo "motd: the login does not carry $address, the address" \
-                     "this machine answers on" >&2
-                failed=1
-                ;;
-        esac
+    if [ ${#addresses[@]} -gt 0 ]; then
+        for address in "${addresses[@]}"; do
+            case $text in
+                *"$address"*)
+                    found_address=$address
+                    break
+                    ;;
+            esac
+        done
+        if [ -n "$found_address" ]; then
+            echo "motd: the login says the machine is reachable at $found_address"
+        else
+            echo "motd: the login carries none of the addresses this machine" \
+                 "answers on:" >&2
+            for address in "${addresses[@]}"; do
+                printf '  %s\n' "$address" >&2
+            done
+            failed=1
+        fi
     fi
     forbidden=$(bt_motd_forbidden_words "$text")
     if [ -z "$forbidden" ]; then
