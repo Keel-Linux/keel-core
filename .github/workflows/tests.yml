@@ -31,9 +31,12 @@ jobs:
     # produces no check. With it "true" the check
     # "appliance / boot-published-layer" appears and is required on master.
     # The job id is part of that check name, so the rename of 2026-09-28 came
-    # with a rename of the protection rule; a rule naming the old check would
-    # have matched nothing and stopped applying without saying so. A layer
-    # that has never been published fails this job now instead of passing it.
+    # with a rename of the protection rule. GitHub fails closed: a required
+    # context that is never reported leaves a pull request blocked waiting
+    # for a status that never arrives, so leaving the rule on the old name
+    # would have locked this repository rather than opened it, and
+    # enforce_admins is true here. A layer that has never been published
+    # fails this job now instead of passing it.
     if: vars.KEEL_LXC_RUNNER == 'true'
     uses: keel-linux/.github/.github/workflows/test-appliance.yml@main
     with:
