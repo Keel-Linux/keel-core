@@ -29,9 +29,10 @@ jobs:
     # "appliance / build-and-boot" appears and is required on master (the job
     # id is part of that check name).
     if: vars.KEEL_LXC_RUNNER == 'true'
-    uses: keel-linux/.github/.github/workflows/test-appliance.yml@main
+    uses: keel-linux/.github/.github/workflows/test-appliance.yml@ci/name-the-gate-for-what-it-proves
     with:
       appliance: core
+      tooling_ref: ci/name-the-gate-for-what-it-proves
       # core is the rootfs layer at the bottom of every chain.
       parent: ""
       timeout: 60
