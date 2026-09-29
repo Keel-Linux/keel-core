@@ -76,13 +76,13 @@ unit number.
 | --- | --- | --- |
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
-| `tests/lib/boot-test-lib.sh` | 100 percent (214 of 214 lines, 65 bats tests, kcov 43), measured on 2026-09-28 with the login verdicts | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `tests/lib/boot-test-lib.sh` | 100 percent (224 of 224 lines, 72 bats tests, kcov 43), measured on 2026-09-29 with the login verdicts and their applicability | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `overlay/usr/lib/keel/banner.sh` | 100 percent (124 of 124 lines, 71 bats tests, kcov 43), measured on 2026-09-28 with the identity file it reads | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `overlay/usr/lib/keel/motd.sh` | 100 percent (62 of 62 lines, 43 bats tests, kcov 43), measured on 2026-09-28 | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `conf.d/main` | 100 percent (8 of 8 lines, kcov 43), measured on 2026-09-28 in the same kcov run as `motd.sh`, which executes the conf script against a scratch drop-in directory | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of all four project-authored files (179 bats tests in
+measured number of all four project-authored files (186 bats tests in
 all); it is only ever raised. `tests/coverage.sh` measures each library
 against the bats file that exercises it and fails when any one is below
 the threshold.
@@ -156,9 +156,7 @@ machine can hold several and which of them the banner shows is the
 banner's own rule (static before dynamic, privacy last).
 
 The login verdict and the drift verdict are collected and reported
-together at the end rather than short circuited, so the login check being
-deliberately red while the layer is rebuilt never costs the run the drift
-check.
+together at the end rather than short circuited, so a red login check never costs the run the drift check.
 
 ## Gate
 
@@ -201,11 +199,17 @@ passing it (keel-linux/.github pull request 12).
    behavioural assertion in the boot test. `plan/main` and the `Makefile`
    are still untouched.
 4. The layer on the mirror lags the repository whenever the overlay or a
-   conf script changes, and the boot test boots the layer. Step 8 fails
-   on a layer built before the login change with a message that says so
-   and names the remedy: rebuild and publish the layer. Nothing weakens
-   the assertion to make the gate green in the meantime, because a green
-   gate over the wrong login is the thing issue #7 is about.
+   conf script changes, and the boot test boots the layer. The login
+   check is therefore asked only of a layer built with the login change,
+   recognised by `/usr/lib/keel/motd.sh`, which `conf.d/main` refuses to
+   build without. On an older layer it reports that it did not apply and
+   names the remedy, rebuild and publish the layer; it does not pass, and
+   a run in which no check applied fails. It was a hard failure first,
+   and that could not work: the check is required and strict on master,
+   the layer can only be rebuilt from master after the merge, and so no
+   merge could ever have turned it green. On a layer that carries the
+   change, a wrong login fails as before, so a regression is still
+   caught by the first published layer that has one.
 5. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
    collapse to one when the maintainer settles the name (brief section
    11); `BT_SPEC_PATHS` in the library and its test change in one line.

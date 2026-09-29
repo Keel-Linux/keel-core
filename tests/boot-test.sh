@@ -117,8 +117,18 @@ motd=$(lxc attach -- run-parts "$BT_MOTD_DIR") || {
 }
 printf '%s\n' "$motd"
 mapfile -t addresses < <(bt_container_ipv6_all "$BT_NAME" "$BT_LXC_PATH")
+# The layer that booted is the one the mirror publishes, not this branch,
+# so the login is checked only on a layer built with the login change:
+# one built before it cannot pass and says nothing about the change, and
+# a required check that no merge can turn green is a lock, not a gate.
+# conf.d/main refuses to build a layer without the library, so a layer
+# that has it and prints the wrong login still fails here.
 login_rc=0
-bt_motd_verdict "$motd" "${addresses[@]+"${addresses[@]}"}" || login_rc=$?
+if bt_login_applies "$BT_ROOTFS"; then
+    bt_motd_verdict "$motd" "${addresses[@]+"${addresses[@]}"}" || login_rc=$?
+else
+    login_rc=na
+fi
 
 # 7. No drift between the declared spec and the booted root.
 set +e
@@ -129,8 +139,7 @@ drift_rc=0
 bt_diff_verdict "$code" || drift_rc=$?
 
 # 8. Both verdicts, collected rather than short circuited: a red login
-#    check waiting for a layer rebuild must not cost the run the drift
-#    check, which was the only behavioural assertion this job had before
+#    check must not cost the run the drift check, which was the only behavioural assertion this job had before
 #    the login one existed. "|| rc=$?" and never "; rc=$?", because the
 #    non-zero return of a verdict is an answer and errexit is on
 #    (docs/traps.md, "A bats suite cannot see a library that kills its

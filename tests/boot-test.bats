@@ -560,10 +560,14 @@ OUT
     [ "$status" -eq 1 ]
 }
 
-@test "motd_verdict: a layer built before this change is named as the cause" {
+@test "motd_verdict: a wrong login is reported as the change not working" {
+    # it is only asked of a layer that carries the change (login_applies),
+    # so a wrong login there is a regression, not a stale layer
     run bt_motd_verdict "$(motd_before)"
     [ "$status" -eq 1 ]
-    [[ $output == *"rebuild"* ]]
+    [[ $output == *"issue #7"* ]]
+    [[ $output == *"carries the login change"* ]]
+    [[ $output != *"rebuild"* ]]
 }
 
 @test "motd_verdict: under the boot test's own shell options it does not vanish" {
@@ -607,6 +611,72 @@ CALLER
     run bt_checks_verdict
     [ "$status" -eq 1 ]
     [[ $output == *"no check"* ]]
+}
+
+@test "checks_verdict: a check that did not apply is named and does not fail the run" {
+    run bt_checks_verdict login:na drift:0
+    [ "$status" -eq 0 ]
+    [[ $output == *"the login check did not apply"* ]]
+    [[ $output == *"1 check passed"* ]]
+}
+
+@test "checks_verdict: a check that did not apply is not a pass either" {
+    run bt_checks_verdict login:na
+    [ "$status" -eq 1 ]
+    [[ $output == *"no check"* ]]
+}
+
+@test "checks_verdict: a failure beside a check that did not apply still fails" {
+    run bt_checks_verdict login:na drift:14
+    [ "$status" -eq 1 ]
+    [[ $output == *"the drift check failed (exit 14)"* ]]
+}
+
+# which layer the login check can be asked of
+
+@test "login_applies: a layer carrying the Keel login library is checked" {
+    root=$(mktemp -d)
+    mkdir -p "$root/usr/lib/keel"
+    : > "$root/usr/lib/keel/motd.sh"
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "login_applies: a layer without it was built before the change, and says so" {
+    root=$(mktemp -d)
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 1 ]
+    [[ $output == *"/usr/lib/keel/motd.sh"* ]]
+    [[ $output == *"built before"* ]]
+    [[ $output == *"rebuild and publish"* ]]
+}
+
+@test "login_applies: a directory at that path is not the library" {
+    root=$(mktemp -d)
+    mkdir -p "$root/usr/lib/keel/motd.sh"
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 1 ]
+}
+
+@test "login_applies: under the boot test's own shell options its answer does not kill the caller" {
+    root=$(mktemp -d)
+    cat > "$STUBS/caller" <<CALLER
+#!/bin/bash
+set -euo pipefail
+. "$BATS_TEST_DIRNAME/lib/boot-test-lib.sh"
+rc=0
+bt_login_applies "$root" || rc=\$?
+echo "after rc=\$rc"
+CALLER
+    chmod +x "$STUBS/caller"
+    run "$STUBS/caller"
+    rm -rf "$root"
+    [ "$status" -eq 0 ]
+    [[ $output == *"after rc=1"* ]]
 }
 
 @test "diff_verdict: 0 and 13 pass, everything else fails with a message" {

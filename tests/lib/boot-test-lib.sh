@@ -447,10 +447,9 @@ bt_motd_verdict() {
         failed=1
     fi
     if [ "$failed" -ne 0 ]; then
-        echo "motd: this login is the one issue #7 describes. If the code" \
-             "for it is in this repository, the layer on the mirror was" \
-             "built before it: rebuild and publish the layer, then run" \
-             "this test again." >&2
+        echo "motd: this login is the one issue #7 describes, on a layer" \
+             "that carries the login change, so the change is not doing" \
+             "its job: read $BT_MOTD_DIR in this layer." >&2
         return 1
     fi
     return 0
@@ -468,17 +467,45 @@ bt_diff_verdict() {
     esac
 }
 
+# The file only a layer built with the login change carries. conf.d/main
+# refuses to build a layer without it, and the login drop-ins source it,
+# so its absence in a booted rootfs means the layer was built from a commit
+# before that change, and never that the change regressed.
+BT_MOTD_LIB=/usr/lib/keel/motd.sh
+
+bt_login_applies() {
+    # bt_login_applies ROOTFS: whether the login check can be asked of the
+    # layer booted from ROOTFS. The check this job runs boots the layer the
+    # mirror publishes, not the branch under test (the check is called
+    # boot-published-layer for that reason), so a layer built before the
+    # login change cannot pass it and says nothing about the change. Returns
+    # 1, naming the cause and the remedy, for such a layer; 0 otherwise.
+    if [ -f "$1$BT_MOTD_LIB" ]; then
+        return 0
+    fi
+    echo "motd: the booted layer has no $BT_MOTD_LIB, so it was built before" \
+         "the login change (conf.d/main refuses to build a layer without" \
+         "it). The login cannot be checked on it: rebuild and publish the" \
+         "layer, and this check applies from then on."
+    return 1
+}
+
 bt_checks_verdict() {
     # bt_checks_verdict NAME:CODE ...: the verdict of the whole run.
     # Returns 1 when any check failed, after naming every one that did.
     # The boot test collects its checks and calls this at the end rather
-    # than exiting at the first failure, so one deliberately red
-    # assertion never hides the result of another: while the login check
-    # waits for a layer rebuild, the drift check still reports.
+    # than exiting at the first failure, so one red assertion never hides
+    # the result of another. CODE "na" is a check that did not apply to
+    # the layer that booted: it is named, it does not fail the run, and it
+    # does not count as a pass, so a run in which nothing applied fails.
     local check name code failed=0 total=0
     for check in "$@"; do
         name=${check%:*}
         code=${check##*:}
+        if [ "$code" = na ]; then
+            echo "boot-test: the $name check did not apply to this layer (see above)"
+            continue
+        fi
         total=$((total + 1))
         if [ "$code" -ne 0 ]; then
             echo "boot-test: the $name check failed (exit $code)" >&2
@@ -492,6 +519,10 @@ bt_checks_verdict() {
     if [ "$failed" -ne 0 ]; then
         return 1
     fi
-    echo "boot-test: $total checks passed"
+    if [ "$total" -eq 1 ]; then
+        echo "boot-test: 1 check passed"
+    else
+        echo "boot-test: $total checks passed"
+    fi
     return 0
 }
