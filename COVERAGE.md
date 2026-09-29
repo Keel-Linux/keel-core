@@ -170,7 +170,12 @@ organization variable `KEEL_LXC_RUNNER`, as the reusable workflow requires
 (a job targeting the `keel-lxc` label with no such runner stays queued for
 24 hours). The variable is `true` since 2026-09-26, so both checks appear
 on every pull request and both are required on `master`:
-`tests / coverage` and `appliance / build-and-boot`.
+`tests / coverage` and `appliance / boot-published-layer`.
+
+The appliance check boots the `core` layer the mirror publishes, which was
+built before the branch under test, so it is evidence about that layer and not
+about the diff. A layer that has never been published fails it rather than
+passing it (keel-linux/.github pull request 12).
 
 ## Plan
 
