@@ -1,2 +1,66 @@
-#!/bin/sh -ex
-echo "do nothing - core requires no post-package configuration commands"
+#!/bin/bash -e
+# Build-time configuration of the core appliance: the message of the day.
+#
+# core needs no post-package configuration of its own, and this script did
+# nothing until the login of an appliance had to stop announcing another
+# distribution (issue #7). What it does now is the one thing an overlay
+# cannot: remove files. common (conf/turnkey.d/motd) writes
+# /etc/update-motd.d/00-turnkey-sysinfo and 08-turnkey-confconsole, this
+# repository's overlay adds 01-keel-sysinfo and 08-keel-confconsole beside
+# them, and the two upstream ones have to go or the operator is welcomed
+# twice and told about a backup service this project does not host.
+#
+# The order is fab's, read from root.patched/body in
+# /usr/share/fab/product.mk of the build host, which runs fab
+# 1.1.1+keel2 (md5 a06bfe03). The unit phases are that version's: they
+# arrive in it through "Apply the units before the common removelists"
+# and "Let a unit carry a removelist", so 1.1.1 and 1.1.1+keel1 still
+# have upstream's order and a stock tkldev is the wrong machine to read
+# this from:
+#
+#   common overlays, common conf scripts (conf/turnkey.d/motd among
+#   them), common patches, unit overlays, unit conf scripts, unit
+#   removelists, common removelists, the product overlay, the product
+#   conf scripts (this file), the product patches, the product
+#   removelist, the initramfs, the common removelists-final, and then
+#   root.patched/post, where /etc/turnkey_version and /etc/keel_version
+#   are written.
+#
+# Two positions carry this change: the common conf scripts run before the
+# product overlay, so the files to remove exist by now, and the product
+# overlay lands before the product conf scripts, so the Keel drop-ins
+# exist by now too. Note for a recipe with units: unit conf scripts run
+# before the product overlay, not after it.
+#
+# The limit of putting it here. This is the only place the prune is
+# called, and that is enough for the way Keel ships: bt-layer subtracts
+# the parent's common_conf from the child's, so no appliance built on
+# core re-runs conf/turnkey.d/motd, and core's removals are inherited by
+# every layer above it. A plain make of a non-core recipe, with the full
+# COMMON_CONF and no parent, writes the drop-ins again and has no prune
+# to take them away. Any recipe built that way needs these same two
+# calls in its own conf.d.
+#
+# The logic is /usr/lib/keel/motd.sh, which the overlay just installed and
+# which the login drop-ins use too (decision 0004); it is unit tested in
+# tests/motd.bats. What this asserts is the arrangement of the directory.
+# That the login output is right is asserted by the boot test, against a
+# booted container (docs/traps.md, "Asserting the configuration is not
+# asserting the behaviour").
+
+# Both paths are the chroot's; they are variables so tests/motd.bats can
+# run this script against a scratch directory, and nothing in the build
+# environment sets them (they are not in CONF_VARS).
+MOTD_DIR=${MOTD_DIR:-/etc/update-motd.d}
+KEEL_MOTD_LIB=${KEEL_MOTD_LIB:-/usr/lib/keel/motd.sh}
+
+if [ ! -r "$KEEL_MOTD_LIB" ]; then
+    echo "conf.d/main: $KEEL_MOTD_LIB is missing; the overlay did not land" >&2
+    exit 1
+fi
+
+# shellcheck source=../overlay/usr/lib/keel/motd.sh
+. "$KEEL_MOTD_LIB"
+
+keel_motd_prune_dir "$MOTD_DIR"
+keel_motd_check_dir "$MOTD_DIR"

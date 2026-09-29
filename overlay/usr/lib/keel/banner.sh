@@ -38,6 +38,28 @@ KEEL_BANNER_COLS=80
 # address is not the last row of the screen.
 KEEL_BANNER_RESERVED_ROWS=1
 
+# keel_banner_version_string FILE...
+# The first line of the first file that is readable and not empty. The
+# appliance is named from /etc/keel_version, written at build time by
+# common (bin/keel-version-files, decision 0014), and from
+# /etc/turnkey_version when the layer was built before that file existed:
+# the fallback is what keeps a banner correct on a layer older than this
+# code. Returns 1 when no file can be read, and then the caller names the
+# machine from its hostname.
+keel_banner_version_string() {
+    local file line
+    for file in "$@"; do
+        [ -r "$file" ] || continue
+        line=""
+        read -r line < "$file" || true
+        if [ -n "$line" ]; then
+            printf '%s\n' "$line"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # keel_banner_app_name VERSION_STRING
 # The appliance name of a version string: core from
 # turnkey-core-19.0-trixie-amd64, nginx-php-fastcgi from

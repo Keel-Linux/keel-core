@@ -1,0 +1,25 @@
+#!/bin/bash
+# The configuration console line of the Keel message of the day.
+#
+# Why here. It replaces 08-turnkey-confconsole, which common
+# (conf/turnkey.d/motd) writes and conf.d/main of this recipe removes:
+# same two lines, pointing at this project's documentation of its own
+# console rather than at another project's (issue #7). The command is
+# named as it is named today; the emphasis upstream added with tput is
+# dropped, because the console surface of this appliance is plain ASCII
+# with no escape (see /usr/lib/keel/banner.sh).
+#
+# Logic is in /usr/lib/keel/motd.sh (decision 0004); this file only
+# prints what the library returns. The library path is written out and
+# not taken from the environment, for the reason 01-keel-sysinfo gives:
+# pam_motd runs this at every login and a sourced path is executed.
+
+set -u
+
+KEEL_MOTD_LIB=/usr/lib/keel/motd.sh
+
+[ -r "$KEEL_MOTD_LIB" ] || exit 0
+# shellcheck source=../../usr/lib/keel/motd.sh
+. "$KEEL_MOTD_LIB"
+
+keel_motd_confconsole_lines

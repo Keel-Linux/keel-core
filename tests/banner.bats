@@ -54,6 +54,53 @@ teardown() {
     [ -z "$output" ]
 }
 
+# which identity file the appliance is named from
+
+@test "version_string: the Keel file is read first" {
+    printf 'keel-core-19.0-trixie-amd64\n' > "$SCRATCH/keel_version"
+    printf 'turnkey-core-19.0-trixie-amd64\n' > "$SCRATCH/turnkey_version"
+    run keel_banner_version_string "$SCRATCH/keel_version" "$SCRATCH/turnkey_version"
+    [ "$status" -eq 0 ]
+    [ "$output" = keel-core-19.0-trixie-amd64 ]
+}
+
+@test "version_string: a layer without the Keel file falls back to the other" {
+    printf 'turnkey-core-19.0-trixie-amd64\n' > "$SCRATCH/turnkey_version"
+    run keel_banner_version_string "$SCRATCH/keel_version" "$SCRATCH/turnkey_version"
+    [ "$status" -eq 0 ]
+    [ "$output" = turnkey-core-19.0-trixie-amd64 ]
+}
+
+@test "version_string: an empty file is skipped like a missing one" {
+    : > "$SCRATCH/keel_version"
+    printf 'turnkey-core-19.0-trixie-amd64\n' > "$SCRATCH/turnkey_version"
+    run keel_banner_version_string "$SCRATCH/keel_version" "$SCRATCH/turnkey_version"
+    [ "$output" = turnkey-core-19.0-trixie-amd64 ]
+}
+
+@test "version_string: only the first line of a file is read" {
+    printf 'keel-core-19.0-trixie-amd64\nand something else\n' > "$SCRATCH/keel_version"
+    run keel_banner_version_string "$SCRATCH/keel_version"
+    [ "$output" = keel-core-19.0-trixie-amd64 ]
+}
+
+@test "version_string: a file with no trailing newline is still read" {
+    printf 'keel-core-19.0-trixie-amd64' > "$SCRATCH/keel_version"
+    run keel_banner_version_string "$SCRATCH/keel_version"
+    [ "$output" = keel-core-19.0-trixie-amd64 ]
+}
+
+@test "version_string: no readable file at all fails and prints nothing" {
+    run keel_banner_version_string "$SCRATCH/absent" "$SCRATCH/also-absent"
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+@test "version_string: no argument fails" {
+    run keel_banner_version_string
+    [ "$status" -eq 1 ]
+}
+
 # the title
 
 @test "truncate: a text that fits is printed as it is" {

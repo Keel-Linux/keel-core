@@ -28,8 +28,22 @@ completes headless from an instance spec, and the machine matches the spec.
   blank columns off each side of a centred block and requires them equal, and
   one renders marks from a single character up to 31 by 71 and requires each
   to come out whole, centred and above an address block that lost no line.
-- `coverage.sh`: runs each bats file under kcov and fails when any measured
-  library is below `COVERAGE_THRESHOLD` (default 95).
+- `motd.bats`: unit tests of `overlay/usr/lib/keel/motd.sh`, the rest of
+  the Keel message of the day (the system information block with the
+  backup client's tail cut off it, what the appliance says about backup,
+  the configuration console line, and the two functions `conf.d/main` uses
+  at build time to leave `/etc/update-motd.d` with Keel's drop-ins and no
+  TurnKey ones). The system information is fed in as text captured from a
+  running appliance, and the drop-in directory is a scratch directory, so
+  nothing here needs an appliance.
+- `coverage.sh`: one kcov run per bats file, however many files that file
+  measures, and a verdict per measured file; fails when any is below
+  `COVERAGE_THRESHOLD` (default 95). `conf.d/main` is measured in
+  `motd.bats`'s run, which executes the conf script itself with `MOTD_DIR`
+  and `KEEL_MOTD_LIB` pointed at a scratch directory. Those two are the
+  only environment overrides left: the login drop-ins write their library
+  path out, because pam_motd runs them with the privileges of the PAM
+  stack and a sourced path is executed rather than read.
 - `instance.yaml`: the spec the container boots from. IPv6 only, address
   from the bridge, no certificate request, no network at first boot.
 
@@ -37,7 +51,7 @@ completes headless from an instance spec, and the machine matches the spec.
 
 Debian packages `bats` (1.11) and `kcov` (43); no root:
 
-    bats tests/boot-test.bats tests/banner.bats
+    bats tests/boot-test.bats tests/banner.bats tests/motd.bats
     COVERAGE_THRESHOLD=100 tests/coverage.sh
 
 `COVERAGE_DIR=coverage tests/coverage.sh` keeps the kcov reports, one
@@ -60,6 +74,20 @@ centred on the columns as a block; a terminal with no room for the full mark
 falls back to `banner-small.txt`, and one narrower than the small mark drops
 the mark and keeps the addresses. On an appliance the same block comes from
 `/etc/update-motd.d/00-keel-banner` at every login.
+
+The rest of the login is sourceable in the same way:
+
+    bash -c 'source overlay/usr/lib/keel/motd.sh
+             "$KEEL_MOTD_SYSINFO_COMMAND" | keel_motd_system_block \
+                 | keel_motd_indent "$KEEL_MOTD_INDENT"
+             echo
+             keel_motd_backup_lines | keel_motd_indent "$KEEL_MOTD_INDENT"
+             keel_motd_confconsole_lines'
+
+On a machine with no `turnkey-sysinfo`, feed `keel_motd_system_block` any
+text: it keeps the header and the table and stops at the blank line that
+ends them, which is how the backup client's block is dropped without
+matching on the words it happens to print.
 
 ## The boot test by hand
 
@@ -108,8 +136,22 @@ What it does, in order:
    process (the usage screen on the console) or an SSH banner on
    `[address]:22`. The flag is what says the boot ended; sshd answers long
    before the hooks are done.
-8. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or
+8. Renders `/etc/update-motd.d` in the running container with
+   `run-parts`, which is what pam_motd does at an interactive login, and
+   checks the result: exactly one welcome, it names Keel, the system
+   information block still carries the load, the memory, the processes,
+   the swap and the usage of `/`, it still reports on the network (an
+   address row, or the `Networking not configured` the command prints on
+   a machine with no IPv4), the login carries one of the addresses the
+   container actually answers on, and it says neither `turnkey` nor `tklbam`
+   (issue #7). The rendered block is printed, so a failure is readable in
+   the job log.
+9. Runs `keel diff --root <rootfs> --spec tests/instance.yaml`; exit 0 or
    13 (no drift) passes, 14 (drift) or any other code fails.
+10. Reports both verdicts together and fails if either did. They are
+    collected rather than short circuited, so a login check that is
+    deliberately red while the layer is rebuilt does not cost the run the
+    drift check.
 
 Measured on `keel-lxc-1` (2 GB of layer, 6 vCPU): pull 3 s from the mirror
 on the same host, assemble 13 s, boot and first boot 10 s.

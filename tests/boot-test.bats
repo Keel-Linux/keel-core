@@ -270,6 +270,415 @@ never() { return 1; }
     [[ $output == *"gave only 5 usable characters"* ]]
 }
 
+# the login
+
+# What /etc/update-motd.d printed before this change, captured from the
+# wordpress-demo container on the build host on 2026-09-28: two welcomes,
+# the second one naming another distribution, and a backup service this
+# project does not host.
+motd_before() {
+    cat <<'OUT'
+
+Keel Linux wordpress 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5:e0fc:fc60:e690:1c25]
+IPv6 SSH:  root@2804:710:d0:5:e0fc:fc60:e690:1c25
+
+Welcome to Wordpress-demo, TurnKey GNU/Linux 19.0 (Debian 13/Trixie)
+
+  System information for Mon Sep 28 02:20:28 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    41                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   IP address for eth0: 10.88.5.69
+
+  TKLBAM (Backup and Migration):  NOT INITIALIZED
+
+    To initialize TKLBAM, run the "tklbam-init" command to link this
+    system to your TurnKey Hub account. For details see the man page or
+    go to:
+
+        https://www.turnkeylinux.org/tklbam
+
+    For Advanced commandline config run:    confconsole
+
+  For more info see: https://www.turnkeylinux.org/docs/confconsole
+
+Linux wordpress-demo 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
+# What it must print instead: one welcome, ours, the same facts, and
+# nothing about a service this distribution does not have.
+motd_after() {
+    cat <<'OUT'
+
+Keel Linux core 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5::a6e]
+IPv6 SSH:  root@2804:710:d0:5::a6e
+
+  System information for Mon Sep 28 02:20:44 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    39                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   IP address for eth0: 10.88.5.69
+
+  Backup:  not configured. Keel has no backup service yet; when one
+           arrives it is configured from confconsole.
+
+    For advanced configuration run:  confconsole
+
+  For more info see: https://github.com/keel-linux/confconsole
+
+Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
+# The same appliance on a bridge with no IPv4. turnkey-sysinfo reports an
+# address per interface from netinfo.InterfaceInfo.address, which is
+# SIOCGIFADDR on an AF_INET socket, so with no IPv4 anywhere it prints the
+# single row "Networking not configured" and the string "IP address"
+# never appears. The machine is correct and reachable; the banner above
+# prints the address it answers on.
+motd_after_ipv6_only() {
+    cat <<'OUT'
+
+Keel Linux core 19.0-trixie-amd64
+
+IPv6 Web:  https://[2804:710:d0:5::a6e]
+IPv6 SSH:  root@2804:710:d0:5::a6e
+
+  System information for Mon Sep 28 02:20:44 2026 (UTC+0000)
+
+    System load:  0.00               Memory usage:  54.8%
+    Processes:    39                 Swap usage:    6.3%
+    Usage of /:   88.2% of 58.76GB   Networking not configured
+
+  Backup:  not configured. Keel has no backup service yet; when one
+           arrives it is configured from confconsole.
+
+    For advanced configuration run:  confconsole
+
+  For more info see: https://github.com/keel-linux/confconsole
+
+Linux keel-core-ci 6.12.107+deb13-amd64 x86_64
+OUT
+}
+
+@test "global_ipv6_all: every global address, in the order lxc-info gave" {
+    run bt_global_ipv6_all <<< $'Name: c\nIP:  10.0.3.4\nIP:  fe80::1\nIP:  2001:db8::2\nIP:  ::1\nIP:  2001:db8::1'
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = 2001:db8::2 ]
+    [ "${lines[1]}" = 2001:db8::1 ]
+    [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "global_ipv6_all: no global address fails and prints nothing" {
+    run bt_global_ipv6_all <<< $'IP:  10.0.3.4\nIP:  fe80::1'
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+@test "container_ipv6_all: asks lxc-info for the container's addresses" {
+    stub_lxc_info $'Name: keel-core-boot-test\nIP:  10.0.3.4\nIP:  2001:db8::1\nIP:  2001:db8::2'
+    run bt_container_ipv6_all keel-core-boot-test /var/lib/lxc
+    [ "$status" -eq 0 ]
+    [ "${#lines[@]}" -eq 2 ]
+    grep -q -- "-P /var/lib/lxc -n keel-core-boot-test -i" "$STUBS/lxc-info.calls"
+}
+
+@test "motd_greetings: the login before this change welcomed twice" {
+    run bt_motd_greetings "$(motd_before)"
+    [ "${#lines[@]}" -eq 2 ]
+    [[ ${lines[0]} == *"Keel Linux wordpress"* ]]
+    [[ ${lines[1]} == *"TurnKey GNU/Linux"* ]]
+}
+
+@test "motd_greetings: the login after it welcomes once, as Keel" {
+    run bt_motd_greetings "$(motd_after)"
+    [ "${#lines[@]}" -eq 1 ]
+    [[ ${lines[0]} == *"Keel Linux core"* ]]
+}
+
+@test "motd_greetings: a login that greets nobody has no greeting line" {
+    run bt_motd_greetings "nothing to see here"
+    [ -z "$output" ]
+}
+
+@test "motd_greetings: a welcome to any product counts" {
+    run bt_motd_greetings "Welcome to Somewhere, Another GNU/Linux 1.0"
+    [ "${#lines[@]}" -eq 1 ]
+}
+
+@test "motd_missing_fields: the block after the change keeps every fact" {
+    run bt_motd_missing_fields "$(motd_after)"
+    [ -z "$output" ]
+}
+
+@test "motd_missing_fields: a lost field is named" {
+    # the whole row carries two fields, so only the label goes
+    text=$(motd_after | sed 's/Swap usage:/Swap:/')
+    run bt_motd_missing_fields "$text"
+    [ "$output" = "Swap usage:" ]
+}
+
+@test "motd_missing_fields: an empty login is missing all of them" {
+    run bt_motd_missing_fields ""
+    [ "${#lines[@]}" -eq "${#BT_MOTD_FIELDS[@]}" ]
+    [ "${#lines[@]}" -eq 5 ]
+}
+
+@test "motd_missing_fields: an appliance with no IPv4 loses no field" {
+    # The five labels the command always prints; the address row is not
+    # one of them, because it is the one thing that depends on the
+    # machine having an IPv4 address.
+    run bt_motd_missing_fields "$(motd_after_ipv6_only)"
+    [ -z "$output" ]
+}
+
+@test "motd_network_row: an address row counts" {
+    run bt_motd_network_row "$(motd_after)"
+    [ "$status" -eq 0 ]
+}
+
+@test "motd_network_row: the row the command prints with no IPv4 counts too" {
+    run bt_motd_network_row "$(motd_after_ipv6_only)"
+    [ "$status" -eq 0 ]
+}
+
+@test "motd_network_row: losing the row entirely does not count" {
+    text=$(motd_after | sed 's/IP address for eth0: 10.88.5.69//')
+    run bt_motd_network_row "$text"
+    [ "$status" -eq 1 ]
+}
+
+@test "motd_verdict: an appliance with no IPv4 passes" {
+    # The scenario the IPv4 assumption would have failed: an IPv6-only
+    # bridge, a machine that is entirely correct.
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2804:710:d0:5::a6e
+    [ "$status" -eq 0 ]
+    [[ $output == *"reachable"* ]]
+}
+
+@test "motd_verdict: the address the machine answers on must be in the login" {
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1
+    [ "$status" -eq 1 ]
+    [[ $output == *2001:db8::1* ]]
+}
+
+@test "motd_verdict: any of the machine's addresses satisfies it" {
+    # lxc-info lists every address and the banner picks one by its own
+    # rule (static before dynamic, privacy last), so the one the test
+    # discovered first is not always the one the login shows. Carrying
+    # any of them is the assertion.
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1 2804:710:d0:5::a6e
+    [ "$status" -eq 0 ]
+    [[ $output == *"reachable at 2804:710:d0:5::a6e"* ]]
+}
+
+@test "motd_verdict: none of the machine's addresses in the login fails" {
+    run bt_motd_verdict "$(motd_after_ipv6_only)" 2001:db8::1 2001:db8::2
+    [ "$status" -eq 1 ]
+    [[ $output == *2001:db8::1* ]]
+    [[ $output == *2001:db8::2* ]]
+}
+
+@test "motd_verdict: without an address it checks the rest" {
+    run bt_motd_verdict "$(motd_after)"
+    [ "$status" -eq 0 ]
+    [[ $output != *reachable* ]]
+}
+
+@test "motd_verdict: losing the whole address row fails" {
+    text=$(motd_after | sed 's/IP address for eth0: 10.88.5.69//')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"no address at all"* ]]
+}
+
+@test "motd_forbidden_words: the login before this change said both" {
+    run bt_motd_forbidden_words "$(motd_before)"
+    [ "${#lines[@]}" -eq 2 ]
+    [[ $output == *turnkey* ]]
+    [[ $output == *tklbam* ]]
+}
+
+@test "motd_forbidden_words: the login after it says neither" {
+    run bt_motd_forbidden_words "$(motd_after)"
+    [ -z "$output" ]
+}
+
+@test "motd_forbidden_words: the match ignores case" {
+    run bt_motd_forbidden_words "see https://www.TurnKeyLinux.org/tklbam"
+    [ "${#lines[@]}" -eq 2 ]
+}
+
+@test "motd_verdict: the login this change produces passes" {
+    run bt_motd_verdict "$(motd_after)"
+    [ "$status" -eq 0 ]
+    [[ $output == *"one welcome"* ]]
+    [[ $output == *"names Keel"* ]]
+    [[ $output == *"system information"* ]]
+}
+
+@test "motd_verdict: the login this change replaces fails on every count" {
+    run bt_motd_verdict "$(motd_before)"
+    [ "$status" -eq 1 ]
+    [[ $output == *"2 welcomes"* ]]
+    [[ $output == *turnkey* ]]
+    [[ $output == *tklbam* ]]
+}
+
+@test "motd_verdict: a welcome that names another distribution fails" {
+    text=$(motd_after | sed 's/^Keel Linux core.*/Welcome to Core, Another GNU\/Linux 19.0/')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"does not name Keel"* ]]
+}
+
+@test "motd_verdict: a login with no welcome at all fails" {
+    text=$(motd_after | grep -v '^Keel Linux core')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"0 welcomes"* ]]
+}
+
+@test "motd_verdict: losing the system information block fails" {
+    text=$(motd_after | grep -vE 'System load|Processes|Usage of /')
+    run bt_motd_verdict "$text"
+    [ "$status" -eq 1 ]
+    [[ $output == *"System load:"* ]]
+    [[ $output == *"Usage of /:"* ]]
+}
+
+@test "motd_verdict: a login that prints nothing fails" {
+    run bt_motd_verdict ""
+    [ "$status" -eq 1 ]
+    [[ $output == *"printed nothing"* ]]
+    run bt_motd_verdict "   "
+    [ "$status" -eq 1 ]
+}
+
+@test "motd_verdict: a wrong login is reported as the change not working" {
+    # it is only asked of a layer that carries the change (login_applies),
+    # so a wrong login there is a regression, not a stale layer
+    run bt_motd_verdict "$(motd_before)"
+    [ "$status" -eq 1 ]
+    [[ $output == *"issue #7"* ]]
+    [[ $output == *"carries the login change"* ]]
+    [[ $output != *"rebuild"* ]]
+}
+
+@test "motd_verdict: under the boot test's own shell options it does not vanish" {
+    # docs/traps.md, "A bats suite cannot see a library that kills its
+    # caller": boot-test.sh runs under set -euo pipefail, bats does not.
+    cat > "$STUBS/caller" <<CALLER
+#!/bin/bash
+set -euo pipefail
+. "$BATS_TEST_DIRNAME/lib/boot-test-lib.sh"
+rc=0
+bt_motd_verdict "nothing useful here" || rc=\$?
+echo "verdict exited \$rc"
+CALLER
+    chmod +x "$STUBS/caller"
+    run "$STUBS/caller"
+    [ "$status" -eq 0 ]
+    [[ $output == *"verdict exited 1"* ]]
+}
+
+@test "checks_verdict: every check green passes and says so" {
+    run bt_checks_verdict login:0 drift:0
+    [ "$status" -eq 0 ]
+    [[ $output == *"2 checks"* ]]
+}
+
+@test "checks_verdict: a failed check is named and the run fails" {
+    run bt_checks_verdict login:1 drift:0
+    [ "$status" -eq 1 ]
+    [[ $output == *login* ]]
+    [[ $output != *"drift failed"* ]]
+}
+
+@test "checks_verdict: every failure is named, not just the first" {
+    run bt_checks_verdict login:1 drift:14
+    [ "$status" -eq 1 ]
+    [[ $output == *login* ]]
+    [[ $output == *drift* ]]
+}
+
+@test "checks_verdict: no checks at all is a failure, not a pass" {
+    run bt_checks_verdict
+    [ "$status" -eq 1 ]
+    [[ $output == *"no check"* ]]
+}
+
+@test "checks_verdict: a check that did not apply is named and does not fail the run" {
+    run bt_checks_verdict login:na drift:0
+    [ "$status" -eq 0 ]
+    [[ $output == *"the login check did not apply"* ]]
+    [[ $output == *"1 check passed"* ]]
+}
+
+@test "checks_verdict: a check that did not apply is not a pass either" {
+    run bt_checks_verdict login:na
+    [ "$status" -eq 1 ]
+    [[ $output == *"no check"* ]]
+}
+
+@test "checks_verdict: a failure beside a check that did not apply still fails" {
+    run bt_checks_verdict login:na drift:14
+    [ "$status" -eq 1 ]
+    [[ $output == *"the drift check failed (exit 14)"* ]]
+}
+
+# which layer the login check can be asked of
+
+@test "login_applies: a layer carrying the Keel login library is checked" {
+    root=$(mktemp -d)
+    mkdir -p "$root/usr/lib/keel"
+    : > "$root/usr/lib/keel/motd.sh"
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "login_applies: a layer without it was built before the change, and says so" {
+    root=$(mktemp -d)
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 1 ]
+    [[ $output == *"/usr/lib/keel/motd.sh"* ]]
+    [[ $output == *"built before"* ]]
+    [[ $output == *"rebuild and publish"* ]]
+}
+
+@test "login_applies: a directory at that path is not the library" {
+    root=$(mktemp -d)
+    mkdir -p "$root/usr/lib/keel/motd.sh"
+    run bt_login_applies "$root"
+    rm -rf "$root"
+    [ "$status" -eq 1 ]
+}
+
+@test "login_applies: under the boot test's own shell options its answer does not kill the caller" {
+    root=$(mktemp -d)
+    cat > "$STUBS/caller" <<CALLER
+#!/bin/bash
+set -euo pipefail
+. "$BATS_TEST_DIRNAME/lib/boot-test-lib.sh"
+rc=0
+bt_login_applies "$root" || rc=\$?
+echo "after rc=\$rc"
+CALLER
+    chmod +x "$STUBS/caller"
+    run "$STUBS/caller"
+    rm -rf "$root"
+    [ "$status" -eq 0 ]
+    [[ $output == *"after rc=1"* ]]
+}
+
 @test "diff_verdict: 0 and 13 pass, everything else fails with a message" {
     run bt_diff_verdict 0
     [ "$status" -eq 0 ]

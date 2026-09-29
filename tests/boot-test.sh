@@ -102,10 +102,47 @@ bt_wait_for "$BT_TIMEOUT" "$BT_INTERVAL" "the confconsole usage screen or SSH on
     first_boot_done
 log "first boot finished; ssh root@$addr"
 
-# 6. No drift between the declared spec and the booted root.
+# 6. What the operator is welcomed by. run-parts over the drop-in
+#    directory is what pam_motd does at an interactive login, so this is
+#    the login itself and not a file read off the disk (issue #7,
+#    docs/traps.md, "Asserting the configuration is not asserting the
+#    behaviour"). Every address the container answers on is passed in,
+#    so "the operator is told how to reach this machine" is checked
+#    against the machine and not against a word; all of them, because
+#    which one the banner shows is the banner's choice.
+log "rendering $BT_MOTD_DIR in $BT_NAME"
+motd=$(lxc attach -- run-parts "$BT_MOTD_DIR") || {
+    echo "boot-test: could not render $BT_MOTD_DIR in $BT_NAME" >&2
+    exit 1
+}
+printf '%s\n' "$motd"
+mapfile -t addresses < <(bt_container_ipv6_all "$BT_NAME" "$BT_LXC_PATH")
+# The layer that booted is the one the mirror publishes, not this branch,
+# so the login is checked only on a layer built with the login change:
+# one built before it cannot pass and says nothing about the change, and
+# a required check that no merge can turn green is a lock, not a gate.
+# conf.d/main refuses to build a layer without the library, so a layer
+# that has it and prints the wrong login still fails here.
+login_rc=0
+if bt_login_applies "$BT_ROOTFS"; then
+    bt_motd_verdict "$motd" "${addresses[@]+"${addresses[@]}"}" || login_rc=$?
+else
+    login_rc=na
+fi
+
+# 7. No drift between the declared spec and the booted root.
 set +e
 keel diff --root "$BT_ROOTFS" --spec "$BT_SPEC"
 code=$?
 set -e
-bt_diff_verdict "$code"
+drift_rc=0
+bt_diff_verdict "$code" || drift_rc=$?
+
+# 8. Both verdicts, collected rather than short circuited: a red login
+#    check must not cost the run the drift check, which was the only behavioural assertion this job had before
+#    the login one existed. "|| rc=$?" and never "; rc=$?", because the
+#    non-zero return of a verdict is an answer and errexit is on
+#    (docs/traps.md, "A bats suite cannot see a library that kills its
+#    caller").
+bt_checks_verdict "login:$login_rc" "drift:$drift_rc"
 log "$BT_APPLIANCE boot test passed"
