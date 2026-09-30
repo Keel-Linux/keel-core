@@ -1,1 +1,5 @@
 #include <turnkey/base>
+
+/* The overlay of handbook decision 0020, converged by keel (issue #15):
+   wg, wg-quick and the wg-quick@ unit, no daemon. No key is made here. */
+wireguard-tools
