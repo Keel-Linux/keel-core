@@ -8,12 +8,17 @@ Actions and is a required status on the default branch).
 
 ## What this repository is
 
-An appliance recipe, not a program: `Makefile` (2 lines: the Webmin
-firewall ports and the include of `turnkey.mk` from common), `plan/main`
-(1 line: `#include <turnkey/base>`), `conf.d/main` (a no-op: core needs no
-post-package configuration), the overlay and documentation. Every package,
-hook and conf script of the image comes from `common`, `fab` and the
-Debian and TurnKey archives, each measured in its own repository.
+An appliance recipe, not a program: `Makefile` (the Webmin firewall
+ports, a `root.build/pre` hook that keeps CrowdSec's postinst from
+registering with its central API during the build, and the include of
+`turnkey.mk` from common), `plan/main`
+(`#include <turnkey/base>`, `keel-core` and `monit`), `conf.d/main` (fails the
+build on a WireGuard key or an enabled `wg-quick@` unit, deletes the
+identity CrowdSec's packages make at installation), the overlay,
+`packages/keel-core` (the appliance manifest of Keel Core, handbook
+decision 0041) and documentation. Every other package, hook and conf
+script of the image comes from `common`, `fab` and the Debian and TurnKey
+archives, each measured in its own repository.
 
 The overlay carries the appliance's own text and, since the console
 banner, its first piece of project-authored shell:
@@ -74,9 +79,12 @@ unit number.
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
 | `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `overlay/usr/lib/keel/banner.sh` | 100 percent (115 of 115 lines, 64 bats tests, kcov 43), measured on 2026-09-27 with the centring of the mark | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `conf.d/main` | 100 percent (14 of 14 lines, 13 bats tests, kcov 43), measured on 2026-09-30 with the CrowdSec identity (tracker#47): run against a scratch tree through `KEEL_CONF_ROOT` | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `packages/keel-core` | built with `dpkg-buildpackage` and linted clean with lintian on trixie; its fields, files and manifest read back by 15 bats tests | `tests/package.bats`, the check `packages / build` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of both project-authored files (94 bats tests in all); it
+measured number of the three project-authored shell files (107 bats tests
+in all); it
 is only ever raised. `tests/coverage.sh` measures each library against the
 bats file that exercises it and fails when any one is below the
 threshold.
@@ -114,9 +122,12 @@ passing it (keel-linux/.github pull request 12).
    The M0 gate reference stands at 24c82ee, the commit both trees were
    built from, and a rebuild now differs by exactly the four overlay
    files listed above, all of them new paths, none of them an edit of an
-   upstream file. `plan/main`, `conf.d` and the `Makefile` are still
-   untouched. Any later change to those three comes with the boot test
-   green and, for a conf script, the decision 0004 treatment.
+   upstream file. Since 2026-09-30 `plan/main` installs `keel-core` and
+   `conf.d/main` deletes CrowdSec's identity (step 4 of handbook decision
+   0041); the conf script got the decision 0004 treatment
+   (`tests/image-conf.bats`). The boot test still boots the published
+   layer, which predates both, so the evidence for them is the isolated
+   build of the pull request that added them.
 4. The two spec paths (`etc/keel/instance.yaml`, `etc/inithooks.yaml`)
    collapse to one when the maintainer settles the name (brief section
    11); `BT_SPEC_PATHS` in the library and its test change in one line.

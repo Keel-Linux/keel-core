@@ -1,15 +1,50 @@
-#!/bin/sh -ex
+#!/bin/bash -e
+# Run by fab in the image chroot, after the packages of plan/main are in.
+# Nothing in an image may identify a machine: every machine made from it
+# would share it. The build fails rather than ship one.
+#
+# KEEL_CONF_ROOT is the tree to work on, empty (the chroot's /) in a build;
+# tests/image-conf.bats sets it to a scratch tree.
+root="${KEEL_CONF_ROOT:-}"
 
 # wireguard-tools ships /etc/wireguard empty and leaves wg-quick@ disabled.
 # keel makes the key pair on the machine at its first converge and enables
 # the unit once the change is confirmed (issue #15): an image that carried
 # a key would give every machine made from it the same one (#8).
-if [ -n "$(ls -A /etc/wireguard 2>/dev/null)" ]; then
+if [ -n "$(ls -A "$root/etc/wireguard" 2>/dev/null)" ]; then
     echo "FATAL: /etc/wireguard is not empty in the image" >&2
     exit 1
 fi
-if [ -n "$(ls /etc/systemd/system/multi-user.target.wants 2>/dev/null \
-        | grep '^wg-quick@')" ]; then
+if compgen -G "$root/etc/systemd/system/multi-user.target.wants/wg-quick@*" \
+        >/dev/null; then
     echo "FATAL: a wg-quick@ unit is enabled in the image" >&2
     exit 1
 fi
+
+# CrowdSec's identity (tracker#47). The postinst of trixie's crowdsec
+# registers the machine with the local API and with CrowdSec's central API,
+# and the postinst of crowdsec-firewall-bouncer adds the bouncer and stores
+# its key, or queues it in pending-registration, whose presence also keeps
+# the bouncer's unit from starting. keel makes all of it again on the
+# machine, on the first enable of the crowdsec overlay (keel 0.13.0). The
+# configuration files around them are the packages' and stay.
+while read -r path; do
+    if [ -e "$root$path" ] || [ -L "$root$path" ]; then
+        rm -f -- "$root$path" 2>/dev/null || :
+        if [ -e "$root$path" ] || [ -L "$root$path" ]; then
+            echo "FATAL: $path is still in the image" >&2
+            exit 1
+        fi
+        echo "removed $path"
+    fi
+done <<'IDENTITY'
+/etc/crowdsec/local_api_credentials.yaml
+/etc/crowdsec/online_api_credentials.yaml
+/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.local
+/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.id
+/var/lib/crowdsec/data/crowdsec.db
+/var/lib/crowdsec/data/crowdsec.db-journal
+/var/lib/crowdsec/data/crowdsec.db-wal
+/var/lib/crowdsec/data/crowdsec.db-shm
+/var/lib/crowdsec/pending-registration
+IDENTITY

@@ -1,3 +1,32 @@
+keel-core-19.0 (3) keel; urgency=low
+
+  * Install keel-core, the appliance manifest of Keel Core (handbook
+    decision 0041, step 4 of its first implementation), built from
+    packages/keel-core. It depends on keel (>= 0.13.0) and on the four
+    overlays of common, installer, wireguard, etcd and crowdsec, which
+    bring wireguard-tools, etcd-server, crowdsec and
+    crowdsec-firewall-bouncer, with etcd and both CrowdSec units disabled,
+    the state of a simple installation. Core's own processes are sshd,
+    Webmin and postfix: the web shell of the format's first draft is not
+    in the image, TurnKey having removed shellinabox in 18.0.
+  * Install monit. keel only recommends it and fab installs no
+    recommends, so apply refused the monitor and the checks derived from
+    the manifests were written and never run.
+  * The image carries no CrowdSec identity (tracker#47): conf.d/main
+    deletes the local and central API credentials, the bouncer's key and
+    its .id, the local API database and pending-registration, which keel
+    makes again on the machine at the first enable of the overlay. The
+    build fails if one of them cannot be deleted. The WireGuard guards are
+    kept.
+  * The Makefile puts a placeholder online_api_credentials.yaml into the
+    tree before the packages are installed, the crowdsec package's own way
+    to skip its registration with CrowdSec's central API: the build chroot
+    has no DNS, so the postinst failed and the build with it, and a
+    registration that succeeded would have been every machine's. conf.d
+    deletes the placeholder with the rest of the identity.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Wed, 30 Sep 2026 22:00:00 +0000
+
 keel-core-19.0 (2) keel; urgency=low
 
   * Ship wireguard-tools, for the WireGuard overlay of handbook decision
