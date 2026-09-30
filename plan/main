@@ -1,5 +1,15 @@
 #include <turnkey/base>
 
-/* The overlay of handbook decision 0020, converged by keel (issue #15):
-   wg, wg-quick and the wg-quick@ unit, no daemon. No key is made here. */
-wireguard-tools
+/* The appliance manifest of Keel Core (handbook decision 0041, step 4 of
+   its first implementation), from packages/keel-core. It depends on the
+   four overlays, which bring keel, inithooks and confconsole, trixie's
+   wireguard-tools (issue #15), etcd-server, crowdsec and
+   crowdsec-firewall-bouncer, and leave etcd and CrowdSec disabled, the
+   state of a simple installation. conf.d/main deletes the identity
+   CrowdSec's packages make at installation. */
+keel-core
+
+/* keel only recommends Monit, and fab installs no recommends: without it
+   keel spec apply refuses the monitor and the checks it derives from the
+   manifests (decisions 0021, 0040 and 0041) are written and never run. */
+monit

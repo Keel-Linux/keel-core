@@ -1,0 +1,32 @@
+Source: keel-core
+Section: admin
+Priority: optional
+Maintainer: KeelLinux maintainers <admin@keellinux.org>
+Uploaders: Marcos Mendez <mendez.foto@gmail.com>
+Build-Depends:
+ debhelper-compat (= 13),
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/Keel-Linux/keel-core.git -b master [packages/keel-core]
+Vcs-Browser: https://github.com/Keel-Linux/keel-core/tree/master/packages/keel-core
+
+Package: keel-core
+Architecture: all
+Depends:
+ keel (>= 0.13.0),
+ keel-overlay-crowdsec,
+ keel-overlay-etcd,
+ keel-overlay-installer,
+ keel-overlay-wireguard,
+ ${misc:Depends},
+Description: Keel Core, the appliance every Keel appliance is built on
+ The appliance manifest of Keel Core (handbook decisions 0036 and 0041),
+ installed as /usr/share/keel/appliances/core.yaml: the four overlays Core
+ carries with their state in each installation mode, and Core's own
+ processes (sshd, Webmin and postfix) with their ports and checks.
+ .
+ It depends on the four overlay packages, installer, wireguard, etcd and
+ crowdsec, and on keel 0.13.0, the first keel that converges the overlays'
+ units and derives Monit's checks from the manifests. Installing it
+ enables nothing: keel spec apply sets each overlay to the state the
+ instance spec gives it.

@@ -1,0 +1,17 @@
+keel-core (0.1.0) trixie; urgency=medium
+
+  * First release (handbook decision 0041, first implementation, step 4).
+    Ships the appliance manifest of Keel Core from docs/manifest-v1.md as
+    /usr/share/keel/appliances/core.yaml: installer enabled in every mode,
+    wireguard and crowdsec disabled in simple and enabled in the cloud
+    modes, etcd enabled in cloud advanced only; sshd, Webmin and postfix
+    as its processes, with the ssh, HTTPS and SMTP probes. The format's
+    web shell (shellinabox, 12320) is left out: TurnKey removed it in
+    18.0, the image has no unit for it, and a manifest naming one fails
+    keel manifest validate on the machine (handbook errata of 0041).
+  * Depends on keel-overlay-installer, keel-overlay-wireguard,
+    keel-overlay-etcd and keel-overlay-crowdsec, and on keel (>= 0.13.0),
+    the first keel that converges the overlays and writes Monit's checks
+    from the manifests.
+
+ -- Marcos Mendez <mendez.foto@gmail.com>  Wed, 30 Sep 2026 22:00:00 +0000
