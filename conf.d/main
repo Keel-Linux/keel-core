@@ -1,2 +1,15 @@
 #!/bin/sh -ex
-echo "do nothing - core requires no post-package configuration commands"
+
+# wireguard-tools ships /etc/wireguard empty and leaves wg-quick@ disabled.
+# keel makes the key pair on the machine at its first converge and enables
+# the unit once the change is confirmed (issue #15): an image that carried
+# a key would give every machine made from it the same one (#8).
+if [ -n "$(ls -A /etc/wireguard 2>/dev/null)" ]; then
+    echo "FATAL: /etc/wireguard is not empty in the image" >&2
+    exit 1
+fi
+if [ -n "$(ls /etc/systemd/system/multi-user.target.wants 2>/dev/null \
+        | grep '^wg-quick@')" ]; then
+    echo "FATAL: a wg-quick@ unit is enabled in the image" >&2
+    exit 1
+fi

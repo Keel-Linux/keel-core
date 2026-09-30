@@ -1,3 +1,13 @@
+keel-core-19.0 (2) keel; urgency=low
+
+  * Ship wireguard-tools, for the WireGuard overlay of handbook decision
+    0020 that keel converges from network.overlay.wireguard (#15). The
+    build fails if /etc/wireguard holds anything or a wg-quick@ unit is
+    enabled: the key pair is made by keel on the machine, never in an
+    image.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Wed, 30 Sep 2026 07:00:00 +0000
+
 keel-core-19.0 (1) keel; urgency=low
 
   * Console banner (the Keel mark above the message of the day):
