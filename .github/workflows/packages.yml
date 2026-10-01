@@ -28,8 +28,7 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: keel-linux/.github/.github/workflows/lxc-trixie.yml@ci/lxc-trixie
+    uses: keel-linux/.github/.github/workflows/lxc-trixie.yml@main
     with:
       timeout: 15
       artifact-dir: dist
