@@ -3,13 +3,21 @@
 # title, the address block, the mark that fits and the whole rendered
 # banner. Nothing here needs root, a network or a terminal: the mark files
 # are the ones the overlay installs and the addresses are arguments.
+#
+# KEEL_BANNER_MARK and KEEL_BANNER_MARK_SMALL are names of this file only:
+# the full and the small mark of the ASCII ladder, which most of the tests
+# below walk. The library reads its marks from KEEL_BANNER_DIR.
 
 bats_require_minimum_version 1.5.0
 
 setup() {
-    KEEL_BANNER_MARK="$BATS_TEST_DIRNAME/../overlay/etc/keel/banner.txt"
-    KEEL_BANNER_MARK_SMALL="$BATS_TEST_DIRNAME/../overlay/etc/keel/banner-small.txt"
+    KEEL_BANNER_DIR="$BATS_TEST_DIRNAME/../overlay/etc/keel"
     load ../overlay/usr/lib/keel/banner.sh
+    KEEL_BANNER_MARK="$KEEL_BANNER_DIR/banner.txt"
+    KEEL_BANNER_MARK_SMALL="$KEEL_BANNER_DIR/banner-small.txt"
+    KEEL_BANNER_MARK_WIDE="$KEEL_BANNER_DIR/banner-wide.txt"
+    KEEL_BANNER_MARK_UTF8="$KEEL_BANNER_DIR/banner-utf8.txt"
+    KEEL_BANNER_MARK_SMALL_UTF8="$KEEL_BANNER_DIR/banner-small-utf8.txt"
     SCRATCH=$(mktemp -d)
 }
 
@@ -475,7 +483,7 @@ draw_mark() {
 @test "render: a dual stack appliance on a tall terminal" {
     local mark_rows
     mark_rows=$(mark_rows_of "$KEEL_BANNER_MARK")
-    run keel_banner_render 40 80 "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 40 80 ascii "Keel Linux core" 19.0-trixie-amd64 \
         2001:db8:1::10 192.0.2.10
     local expected
     expected=$(keel_banner_center_mark 80 "$KEEL_BANNER_MARK"
@@ -491,7 +499,8 @@ draw_mark() {
 
 @test "render: the mark is centred on the width of the terminal" {
     local cols=70
-    run keel_banner_render 40 "$cols" "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 40 "$cols" ascii "Keel Linux core" \
+        19.0-trixie-amd64 \
         2001:db8:1::10
     rows_of
     assert_centred_rows "$cols" "$KEEL_BANNER_MARK"
@@ -500,7 +509,7 @@ draw_mark() {
 @test "render: the title and the address lines stay at column one" {
     local mark_rows
     mark_rows=$(mark_rows_of "$KEEL_BANNER_MARK")
-    run keel_banner_render 40 80 "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 40 80 ascii "Keel Linux core" 19.0-trixie-amd64 \
         2001:db8:1::10 192.0.2.10
     rows_of
     [ "${ROWS[mark_rows + 1]}" = "Keel Linux core 19.0-trixie-amd64" ]
@@ -513,7 +522,7 @@ draw_mark() {
 @test "render: an IPv6 only appliance names no IPv4" {
     local mark_rows
     mark_rows=$(mark_rows_of "$KEEL_BANNER_MARK")
-    run keel_banner_render 40 80 "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 40 80 ascii "Keel Linux core" 19.0-trixie-amd64 \
         2001:db8:1::10
     [[ $output != *IPv4* ]]
     rows_of
@@ -529,7 +538,7 @@ draw_mark() {
 @test "render: a terminal of 24 rows keeps every address line and fits" {
     local rows=24 cols=80 mark_rows
     mark_rows=$(chosen_mark_rows_of "$rows" "$cols" 7)
-    run keel_banner_render "$rows" "$cols" "Keel Linux core" \
+    run keel_banner_render "$rows" "$cols" ascii "Keel Linux core" \
         19.0-trixie-amd64 2001:db8:1::10 192.0.2.10
     rows_of
     [ "${#ROWS[@]}" -eq $((mark_rows + 7)) ]
@@ -542,7 +551,8 @@ draw_mark() {
 @test "render: a terminal too small for any mark keeps the text" {
     local cols
     cols=$(($(mark_cols_of "$KEEL_BANNER_MARK_SMALL") - 1))
-    run keel_banner_render 10 "$cols" "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 10 "$cols" ascii "Keel Linux core" \
+        19.0-trixie-amd64 \
         2001:db8:1::10
     rows_of
     [ "${#ROWS[@]}" -eq 4 ]
@@ -555,10 +565,9 @@ draw_mark() {
 }
 
 @test "render: a mark of a third size is measured, not assumed" {
-    KEEL_BANNER_MARK="$SCRATCH/mark"
-    KEEL_BANNER_MARK_SMALL="$SCRATCH/mark"
-    printf '%s\n' AAAA '' BB > "$KEEL_BANNER_MARK"
-    run keel_banner_render 40 10 core 19.0 2001:db8:1::10
+    KEEL_BANNER_DIR=$SCRATCH
+    printf '%s\n' AAAA '' BB > "$SCRATCH/banner.txt"
+    run keel_banner_render 40 10 ascii core 19.0 2001:db8:1::10
     rows_of
     [ "${#ROWS[@]}" -eq 8 ]
     [ "${ROWS[0]}" = "   AAAA" ]
@@ -582,15 +591,15 @@ draw_mark() {
     for size in "1 1" "2 3" "9 17" "31 71" "44 7"; do
         rows=${size% *}
         cols=${size#* }
-        draw_mark "$SCRATCH/mark" "$rows" "$cols"
-        KEEL_BANNER_MARK="$SCRATCH/mark"
-        KEEL_BANNER_MARK_SMALL="$SCRATCH/mark"
+        KEEL_BANNER_DIR=$SCRATCH
+        draw_mark "$SCRATCH/banner.txt" "$rows" "$cols"
+        cp "$SCRATCH/banner.txt" "$SCRATCH/mark"
         [ "$(keel_banner_mark_size "$SCRATCH/mark")" = "$rows $cols" ]
 
         # the smallest terminal this mark fits in, nine columns to spare
         term_rows=$((rows + body + KEEL_BANNER_RESERVED_ROWS))
         term_cols=$((cols + 9))
-        run keel_banner_render "$term_rows" "$term_cols" core 19.0 \
+        run keel_banner_render "$term_rows" "$term_cols" ascii core 19.0 \
             2001:db8:1::10
         [ "$status" -eq 0 ]
         rows_of
@@ -606,13 +615,13 @@ draw_mark() {
         # one row short, or one column short, and the mark goes rather
         # than a line of text: what is left is the body without the blank
         # row the mark carried above it.
-        run keel_banner_render $((term_rows - 1)) "$term_cols" core 19.0 \
-            2001:db8:1::10
+        run keel_banner_render $((term_rows - 1)) "$term_cols" ascii core \
+            19.0 2001:db8:1::10
         rows_of
         [ "${#ROWS[@]}" -eq $((body - 1)) ]
         [ "${ROWS[0]}" = "core 19.0" ]
         [ "${ROWS[2]}" = "IPv6 Web:  https://[2001:db8:1::10]" ]
-        run keel_banner_render "$term_rows" $((cols - 1)) core 19.0 \
+        run keel_banner_render "$term_rows" $((cols - 1)) ascii core 19.0 \
             2001:db8:1::10
         rows_of
         [ "${#ROWS[@]}" -eq $((body - 1)) ]
@@ -621,7 +630,7 @@ draw_mark() {
 }
 
 @test "render: the block is plain ASCII with no escape character" {
-    run keel_banner_render 40 80 "Keel Linux core" 19.0-trixie-amd64 \
+    run keel_banner_render 40 80 ascii "Keel Linux core" 19.0-trixie-amd64 \
         2001:db8:1::10 192.0.2.10
     [[ $output != *$'\e'* ]]
     printf '%s\n' "$output" > "$SCRATCH/block"
@@ -632,7 +641,7 @@ draw_mark() {
     local name="Keel Linux forum-staging-eu-west-01.infrastructure.keellinux.org"
     local rows=24 cols=80 mark_rows
     mark_rows=$(chosen_mark_rows_of "$rows" "$cols" 5)
-    run keel_banner_render "$rows" "$cols" "$name" 19.0-trixie-amd64 \
+    run keel_banner_render "$rows" "$cols" ascii "$name" 19.0-trixie-amd64 \
         2001:db8:1::10
     rows_of
     [ "${#ROWS[@]}" -eq $((mark_rows + 5)) ]
@@ -695,14 +704,317 @@ OUT
 
 # what the overlay installs
 
-@test "the default mark paths are the ones the overlay installs" {
-    run env -u KEEL_BANNER_MARK -u KEEL_BANNER_MARK_SMALL bash -c \
+@test "the marks are read from /etc/keel unless told otherwise" {
+    run env -u KEEL_BANNER_DIR bash -c \
         "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
-         echo \$KEEL_BANNER_MARK \$KEEL_BANNER_MARK_SMALL"
-    [ "$output" = "/etc/keel/banner.txt /etc/keel/banner-small.txt" ]
+         keel_banner_marks utf8; keel_banner_marks ascii"
+    [ "$output" = "/etc/keel/banner-wide.txt
+/etc/keel/banner-utf8.txt
+/etc/keel/banner-small-utf8.txt
+/etc/keel/banner.txt
+/etc/keel/banner-small.txt" ]
 }
 
-@test "the marks are plain ASCII with no escape character" {
-    run ! env LC_ALL=C grep -q '[^ -~]' "$KEEL_BANNER_MARK"
-    run ! env LC_ALL=C grep -q '[^ -~]' "$KEEL_BANNER_MARK_SMALL"
+@test "the overlay installs every mark the two ladders name" {
+    local mark
+    for mark in $(keel_banner_marks utf8) $(keel_banner_marks ascii); do
+        [ -s "$mark" ]
+        keel_banner_mark_size "$mark" > /dev/null
+    done
+}
+
+@test "the ASCII marks are plain ASCII with no escape character" {
+    local mark
+    for mark in $(keel_banner_marks ascii); do
+        run ! env LC_ALL=C grep -q '[^ -~]' "$mark"
+    done
+}
+
+@test "the UTF-8 marks are valid UTF-8 with no escape character" {
+    local mark
+    for mark in $(keel_banner_marks utf8); do
+        iconv -f UTF-8 -t UTF-8 "$mark" > /dev/null
+        run ! grep -q $'\e' "$mark"
+        run ! grep -q $'\t' "$mark"
+    done
+}
+
+@test "the UTF-8 and the ASCII marks of a tier are the same size" {
+    [ "$(keel_banner_mark_size "$KEEL_BANNER_MARK_UTF8")" = \
+        "$(keel_banner_mark_size "$KEEL_BANNER_MARK")" ]
+    [ "$(keel_banner_mark_size "$KEEL_BANNER_MARK_SMALL_UTF8")" = \
+        "$(keel_banner_mark_size "$KEEL_BANNER_MARK_SMALL")" ]
+}
+
+@test "the ladders go from the largest mark to the smallest" {
+    local charset previous="" mark size
+    for charset in utf8 ascii; do
+        previous=""
+        for mark in $(keel_banner_marks "$charset"); do
+            size=$(keel_banner_mark_size "$mark")
+            if [ -n "$previous" ]; then
+                [ "${size#* }" -le "${previous#* }" ]
+                [ "${size% *}" -le "${previous% *}" ]
+            fi
+            previous=$size
+        done
+    done
+}
+
+@test "no line of an installed mark ends in whitespace" {
+    local mark
+    for mark in $(keel_banner_marks utf8) $(keel_banner_marks ascii); do
+        run ! grep -q '[[:space:]]$' "$mark"
+    done
+}
+
+# the character set
+#
+# The UTF-8 marks draw with block and shade characters, which a terminal in
+# the C locale prints as three bytes of noise each, so the ladder follows the
+# locale: UTF-8 when it says UTF-8, ASCII otherwise.
+
+@test "marks: the UTF-8 ladder is the wide, the full and the small mark" {
+    run keel_banner_marks utf8
+    [ "$output" = "$KEEL_BANNER_MARK_WIDE
+$KEEL_BANNER_MARK_UTF8
+$KEEL_BANNER_MARK_SMALL_UTF8" ]
+}
+
+@test "marks: the ASCII ladder has no wide mark" {
+    run keel_banner_marks ascii
+    [ "$output" = "$KEEL_BANNER_MARK
+$KEEL_BANNER_MARK_SMALL" ]
+}
+
+@test "marks: anything but utf8 is the ASCII ladder" {
+    run keel_banner_marks ""
+    [ "$output" = "$(keel_banner_marks ascii)" ]
+    run keel_banner_marks latin1
+    [ "$output" = "$(keel_banner_marks ascii)" ]
+}
+
+@test "effective_locale: LC_ALL wins over LC_CTYPE and LANG" {
+    run keel_banner_effective_locale C en_US.UTF-8 en_US.UTF-8
+    [ "$output" = C ]
+}
+
+@test "effective_locale: LC_CTYPE wins over LANG" {
+    run keel_banner_effective_locale "" C.UTF-8 C
+    [ "$output" = C.UTF-8 ]
+}
+
+@test "effective_locale: LANG when nothing else is set" {
+    run keel_banner_effective_locale "" "" pt_BR.UTF-8
+    [ "$output" = pt_BR.UTF-8 ]
+}
+
+@test "effective_locale: nothing set prints nothing" {
+    run keel_banner_effective_locale "" "" ""
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    run keel_banner_effective_locale
+    [ -z "$output" ]
+}
+
+@test "charset: a UTF-8 locale, however it is spelled" {
+    local value
+    for value in C.UTF-8 C.utf8 en_US.UTF-8 pt_BR.utf8 de_DE.UTF-8@euro; do
+        run keel_banner_charset "$value"
+        [ "$output" = utf8 ]
+    done
+}
+
+@test "charset: C, POSIX, a legacy codeset or nothing is ASCII" {
+    local value
+    for value in C POSIX en_US en_US.ISO-8859-1 ""; do
+        run keel_banner_charset "$value"
+        [ "$output" = ascii ]
+    done
+    run keel_banner_charset
+    [ "$output" = ascii ]
+}
+
+@test "locale_of_file: reads /etc/default/locale with its precedence" {
+    run keel_banner_locale_of_file <<'FILE'
+#  File generated by update-locale
+LANG="en_US.UTF-8"
+LC_CTYPE=C
+FILE
+    [ "$output" = C ]
+}
+
+@test "locale_of_file: single quotes, blanks and comments" {
+    run keel_banner_locale_of_file <<'FILE'
+
+# LC_ALL=C
+  LANG='pt_BR.UTF-8'
+LANGUAGE=pt_BR:pt
+FILE
+    [ "$output" = pt_BR.UTF-8 ]
+}
+
+@test "locale_of_file: LC_ALL in the file wins over the rest" {
+    run keel_banner_locale_of_file <<'FILE'
+LANG=en_US.UTF-8
+LC_ALL=C
+LC_CTYPE=en_US.UTF-8
+FILE
+    [ "$output" = C ]
+}
+
+@test "locale_of_file: a last line with no newline is read" {
+    run keel_banner_locale_of_file < <(printf 'LANG=C.UTF-8')
+    [ "$output" = C.UTF-8 ]
+}
+
+@test "locale_of_file: an empty file names no locale" {
+    run keel_banner_locale_of_file < /dev/null
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+# the size of the terminal
+#
+# pam_motd runs the drop-ins with an empty environment and its output goes
+# to a file, so the size comes from LINES and COLUMNS when a caller sets
+# them, from stty on the controlling terminal when there is one, and from
+# the 24 by 80 every terminal guarantees when neither says.
+
+@test "terminal_size: LINES and COLUMNS win" {
+    run keel_banner_terminal_size 50 200 "30 100"
+    [ "$output" = "50 200" ]
+}
+
+@test "terminal_size: stty when the environment does not say" {
+    run keel_banner_terminal_size "" "" "45 160"
+    [ "$output" = "45 160" ]
+}
+
+@test "terminal_size: each dimension falls back on its own" {
+    run keel_banner_terminal_size 30 "" "45 160"
+    [ "$output" = "30 160" ]
+    run keel_banner_terminal_size "" 100 ""
+    [ "$output" = "24 100" ]
+}
+
+@test "terminal_size: nothing usable is 24 by 80" {
+    run keel_banner_terminal_size "" "" ""
+    [ "$output" = "24 80" ]
+    run keel_banner_terminal_size
+    [ "$output" = "24 80" ]
+}
+
+@test "terminal_size: zero, negative or not a number is not a size" {
+    run keel_banner_terminal_size 0 abc "0 0"
+    [ "$output" = "24 80" ]
+    run keel_banner_terminal_size -5 12x "x -7"
+    [ "$output" = "24 80" ]
+    run keel_banner_terminal_size -5 12x "x 7"
+    [ "$output" = "24 7" ]
+}
+
+# the UTF-8 ladder on the four terminals the maintainer looks at
+#
+# Which tier a terminal gets is measured, never written down: the expected
+# mark is the largest of the ladder whose measured size leaves room for the
+# text, and each case checks that it is the one rendered and that it is
+# centred.
+
+# expected_mark CHARSET ROWS COLS BODY
+expected_mark() {
+    local mark size
+    for mark in $(keel_banner_marks "$1"); do
+        size=$(keel_banner_mark_size "$mark")
+        [ "${size#* }" -le "$3" ] || continue
+        [ $((${size% *} + $4 + KEEL_BANNER_RESERVED_ROWS)) -le "$2" ] \
+            || continue
+        printf '%s\n' "$mark"
+        return 0
+    done
+    return 1
+}
+
+@test "mark_size: a UTF-8 mark is measured in characters in any locale" {
+    printf '%s\n' '█▄▀░' '▒▓' > "$SCRATCH/mark"
+    run env LC_ALL=C bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         keel_banner_mark_size '$SCRATCH/mark'"
+    [ "$output" = "2 4" ]
+    run env LC_ALL=C.UTF-8 bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         keel_banner_mark_size '$SCRATCH/mark'"
+    [ "$output" = "2 4" ]
+}
+
+@test "mark_size: the measurement leaves the caller's locale alone" {
+    run env LC_ALL=C bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         keel_banner_mark_size '$KEEL_BANNER_MARK_WIDE' > /dev/null
+         s='█'; echo \${#s}"
+    [ "$output" = 3 ]
+}
+
+@test "center_mark: a UTF-8 mark is centred on characters, not bytes" {
+    printf '%s\n' '██' '▀' > "$SCRATCH/mark"
+    run env LC_ALL=C bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         keel_banner_center_mark 6 '$SCRATCH/mark'"
+    [ "$output" = "  ██
+  ▀" ]
+}
+
+@test "render: each terminal gets the largest UTF-8 mark that fits" {
+    local size rows cols mark body=7
+    for size in "24 80" "30 100" "45 160" "50 200"; do
+        rows=${size% *}
+        cols=${size#* }
+        mark=$(expected_mark utf8 "$rows" "$cols" "$body")
+        run keel_banner_render "$rows" "$cols" utf8 "Keel Linux core" \
+            19.0-trixie-amd64 2001:db8:1::10 192.0.2.10
+        [ "$status" -eq 0 ]
+        rows_of
+        [ "${#ROWS[@]}" -eq $(($(mark_rows_of "$mark") + body)) ]
+        assert_centred_rows "$cols" "$mark"
+    done
+}
+
+@test "render: the wide mark needs its full width and falls back below it" {
+    local cols rows=50 body=7
+    cols=$(mark_cols_of "$KEEL_BANNER_MARK_WIDE")
+    run keel_banner_render "$rows" "$cols" utf8 core 19.0 \
+        2001:db8:1::10 192.0.2.10
+    rows_of
+    assert_centred_rows "$cols" "$KEEL_BANNER_MARK_WIDE"
+    run keel_banner_render "$rows" $((cols - 1)) utf8 core 19.0 \
+        2001:db8:1::10 192.0.2.10
+    rows_of
+    assert_centred_rows $((cols - 1)) "$KEEL_BANNER_MARK_UTF8"
+    [ "${#ROWS[@]}" -eq $(($(mark_rows_of "$KEEL_BANNER_MARK_UTF8") + body)) ]
+}
+
+@test "render: an ASCII terminal never gets the wide mark" {
+    run keel_banner_render 50 200 ascii core 19.0 2001:db8:1::10
+    rows_of
+    assert_centred_rows 200 "$KEEL_BANNER_MARK"
+    printf '%s\n' "$output" > "$SCRATCH/block"
+    run ! env LC_ALL=C grep -q '[^ -~]' "$SCRATCH/block"
+}
+
+@test "render: a UTF-8 terminal too small for the full mark gets the small" {
+    local rows body=7
+    rows=$(($(mark_rows_of "$KEEL_BANNER_MARK_SMALL_UTF8") + body \
+        + KEEL_BANNER_RESERVED_ROWS))
+    run keel_banner_render "$rows" 80 utf8 core 19.0 \
+        2001:db8:1::10 192.0.2.10
+    rows_of
+    assert_centred_rows 80 "$KEEL_BANNER_MARK_SMALL_UTF8"
+}
+
+@test "render: a UTF-8 tier that is not installed is skipped" {
+    KEEL_BANNER_DIR=$SCRATCH
+    cp "$KEEL_BANNER_MARK_SMALL_UTF8" "$SCRATCH/banner-small-utf8.txt"
+    run keel_banner_render 50 200 utf8 core 19.0 2001:db8:1::10
+    rows_of
+    assert_centred_rows 200 "$SCRATCH/banner-small-utf8.txt"
 }

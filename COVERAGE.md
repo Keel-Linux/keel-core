@@ -26,7 +26,7 @@ banner, its first piece of project-authored shell:
 | Path | What it is | Measured |
 | --- | --- | --- |
 | `etc/confconsole/services.txt` | the lines confconsole shows on its usage screen | data |
-| `etc/keel/banner.txt`, `etc/keel/banner-small.txt` | the mark in ASCII, the full one and the small one, installed unmodified from the design system (exports of `keel-mark.svg`; a change is a re-export, never an edit of the characters). Their size is whatever the exported files carry: the renderer measures each file, centres the mark it picked on the width of the terminal and falls back to the small mark and then to none as the screen shrinks, so a re-export at another size needs no change here | data |
+| `etc/keel/banner-wide.txt`, `etc/keel/banner-utf8.txt`, `etc/keel/banner-small-utf8.txt`, `etc/keel/banner.txt`, `etc/keel/banner-small.txt` | the maintainer's console art, installed byte for byte as he drew it: the wide mark with the KEEL LINUX lettering, the tagline and KEELLINUX.ORG (UTF-8 only), the full mark and the small one, each in UTF-8 block characters and in ASCII. A change is a new drawing, never an edit of the characters. Their size is whatever the files carry: the renderer measures each file, takes the largest that fits the terminal (wide, full, small, none), the UTF-8 ladder when the locale is UTF-8 and the ASCII one otherwise, and centres it | data |
 | `usr/lib/keel/banner.sh` | the banner renderer, pure functions (decision 0004) | 100 percent, see below |
 | `etc/update-motd.d/00-keel-banner` | the thin main: terminal size, version file, `ip` probe, one call into the library | the LXC run |
 
@@ -36,7 +36,7 @@ place and the mark is added above it. That directory is what pam_motd runs
 at an interactive login, over SSH and on the container console alike; the
 other console, tty1 running confconsole from inithooks, never reaches
 pam_motd and gets the mark from the confconsole repository, from these
-same two files. `/etc/issue` was not used: getty prints it before the
+same files. `/etc/issue` was not used: getty prints it before the
 login prompt, so the mark would scroll away with each failed attempt and
 be printed twice on a console login.
 
@@ -78,7 +78,7 @@ unit number.
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
 | `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `overlay/usr/lib/keel/banner.sh` | 100 percent (115 of 115 lines, 64 bats tests, kcov 43), measured on 2026-09-27 with the centring of the mark | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/banner.sh` | 100 percent (149 of 149 lines, 96 bats tests, kcov 43), measured on 2026-10-01 with the maintainer's art in tiers and the locale | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `conf.d/main` | 100 percent (14 of 14 lines, 13 bats tests, kcov 43), measured on 2026-09-30 with the CrowdSec identity (tracker#47): run against a scratch tree through `KEEL_CONF_ROOT` | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `packages/keel-core` | built with `dpkg-buildpackage` and linted clean with lintian on trixie; its fields, files and manifest read back by 15 bats tests | `tests/package.bats`, the check `packages / build` |
 
@@ -120,8 +120,9 @@ passing it (keel-linux/.github pull request 12).
 3. The recipe is no longer byte-identical to upstream: the console banner
    of 2026-09-26 is the first project-authored addition to the overlay.
    The M0 gate reference stands at 24c82ee, the commit both trees were
-   built from, and a rebuild now differs by exactly the four overlay
-   files listed above, all of them new paths, none of them an edit of an
+   built from, and a rebuild now differs by exactly the overlay files
+   listed above (seven since the maintainer's art of 2026-10-01), all of
+   them new paths, none of them an edit of an
    upstream file. Since 2026-09-30 `plan/main` installs `keel-core` and
    `conf.d/main` deletes CrowdSec's identity (step 4 of handbook decision
    0041); the conf script got the decision 0004 treatment

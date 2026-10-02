@@ -1,3 +1,25 @@
+keel-core-19.0 (4) keel; urgency=low
+
+  * Console banner: the maintainer's art replaces the old hand-made mark.
+    /etc/keel now holds his five files, byte for byte: banner-wide.txt
+    (the mark with the KEEL LINUX lettering, the tagline and
+    KEELLINUX.ORG, UTF-8), banner-utf8.txt and banner.txt (the full
+    mark), banner-small-utf8.txt and banner-small.txt (the small one).
+
+    - The largest that fits is taken, wide, then full, then small, then
+      none, measured from each file against the terminal: LINES and
+      COLUMNS, then stty size, then 24 by 80.
+
+    - The UTF-8 files when the locale is UTF-8 (LC_ALL, LC_CTYPE, LANG,
+      then /etc/default/locale, since pam_motd runs the drop-ins with an
+      empty environment), the ASCII ones otherwise. There is no ASCII
+      wide mark.
+
+    - A UTF-8 mark is measured in characters whatever the caller's
+      locale, so it is centred as it is drawn.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Thu, 01 Oct 2026 21:00:00 +0000
+
 keel-core-19.0 (3) keel; urgency=low
 
   * Install keel-core, the appliance manifest of Keel Core (handbook
