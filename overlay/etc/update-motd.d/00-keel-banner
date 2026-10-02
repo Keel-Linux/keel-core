@@ -19,6 +19,10 @@
 
 set -u
 
+# Set while this script runs the drop-ins after it to measure them, so that
+# one of them that runs this file again prints nothing and measures nothing.
+[ -z "${KEEL_BANNER_MEASURING-}" ] || exit 0
+
 KEEL_BANNER_LIB="${KEEL_BANNER_LIB:-/usr/lib/keel/banner.sh}"
 # The appliance version: /etc/turnkey_version, written by turnkey.mk of
 # common at build time and read by inithooks (firstboot.d/29tagid). There is
@@ -32,6 +36,21 @@ KEEL_APPNAME_FILE="${KEEL_APPNAME_FILE:-/etc/appname}"
 # The system locale, read when the environment names none: pam_motd runs
 # the drop-ins under "env -i", so on a login the environment is empty.
 KEEL_LOCALE_FILE="${KEEL_LOCALE_FILE:-/etc/default/locale}"
+
+# What pam_motd prints below this banner, measured so the mark leaves room
+# for it (screenshots 112 to 115): the drop-ins of this directory named
+# after this file, then the static /etc/motd (the "noupdate" line of
+# /etc/pam.d/login and sshd). Each drop-in is run once more for that, and
+# one that hangs is cut after KEEL_MOTD_TIMEOUT seconds.
+KEEL_MOTD_DIR="${KEEL_MOTD_DIR:-/etc/update-motd.d}"
+KEEL_MOTD_FILE="${KEEL_MOTD_FILE:-/etc/motd}"
+KEEL_MOTD_TIMEOUT="${KEEL_MOTD_TIMEOUT:-5}"
+
+# The lines of confconsole's usage screen. Each layer of the appliance
+# chain installs its own over its base's, and a "Web:" line is how one
+# says it serves the web (Keel Web and the applications on it do, Core
+# does not), so the banner shows a Web line where the usage screen does.
+KEEL_SERVICES_FILE="${KEEL_SERVICES_FILE:-/etc/confconsole/services.txt}"
 
 [ -r "$KEEL_BANNER_LIB" ] || exit 0
 # shellcheck source=../../usr/lib/keel/banner.sh
@@ -73,6 +92,29 @@ if address=$(ip -4 addr show scope global 2>/dev/null | keel_banner_pick_ipv4)
 then
     addresses+=("$address")
 fi
+
+if [ -r "$KEEL_SERVICES_FILE" ]; then
+    KEEL_BANNER_WEB=$(keel_banner_web_scheme < "$KEEL_SERVICES_FILE") \
+        || KEEL_BANNER_WEB=""
+fi
+
+# rest_of_motd: the text pam_motd prints after this drop-in
+rest_of_motd() {
+    local script
+    run-parts --test "$KEEL_MOTD_DIR" 2>/dev/null \
+        | keel_banner_after "$(basename "$0")" \
+        | while IFS= read -r script; do
+            KEEL_BANNER_MEASURING=1 timeout "$KEEL_MOTD_TIMEOUT" \
+                "$script" < /dev/null 2>/dev/null || :
+        done
+    if [ -r "$KEEL_MOTD_FILE" ]; then
+        cat "$KEEL_MOTD_FILE"
+    fi
+}
+
+# and the blank line this drop-in ends with
+below=$(rest_of_motd | keel_banner_text_rows "$cols")
+KEEL_BANNER_BELOW_ROWS=$((below + 1))
 
 keel_banner_render "$rows" "$cols" "$charset" "$name" "$version" \
     "${addresses[@]}"

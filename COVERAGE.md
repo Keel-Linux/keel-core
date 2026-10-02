@@ -28,7 +28,7 @@ banner, its first piece of project-authored shell:
 | `etc/confconsole/services.txt` | the lines confconsole shows on its usage screen | data |
 | `etc/keel/banner-wide.txt`, `etc/keel/banner-utf8.txt`, `etc/keel/banner-small-utf8.txt`, `etc/keel/banner.txt`, `etc/keel/banner-small.txt` | the maintainer's console art, installed byte for byte as he drew it: the wide mark with the KEEL LINUX lettering, the tagline and KEELLINUX.ORG (UTF-8 only), the full mark and the small one, each in UTF-8 block characters and in ASCII. A change is a new drawing, never an edit of the characters. Their size is whatever the files carry: the renderer measures each file, takes the largest that fits the terminal (wide, full, small, none), the UTF-8 ladder when the locale is UTF-8 and the ASCII one otherwise, and centres it | data |
 | `usr/lib/keel/banner.sh` | the banner renderer, pure functions (decision 0004) | 100 percent, see below |
-| `etc/update-motd.d/00-keel-banner` | the thin main: terminal size, version file, `ip` probe, one call into the library | the LXC run |
+| `etc/update-motd.d/00-keel-banner` | the thin main: terminal size, version file, `ip` probe, the Web line's scheme from `etc/confconsole/services.txt`, the drop-ins after it and `/etc/motd` run and measured, one call into the library | the LXC run, and the drop-in tests of `tests/banner.bats` |
 
 The banner is a drop-in named before the files `common`
 (`conf/turnkey.d/motd`) writes, so every word upstream prints keeps its
@@ -78,12 +78,12 @@ unit number.
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
 | `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `overlay/usr/lib/keel/banner.sh` | 100 percent (149 of 149 lines, 96 bats tests, kcov 43), measured on 2026-10-01 with the maintainer's art in tiers and the locale | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/banner.sh` | 100 percent (199 of 199 lines, 126 bats tests, kcov 43), measured on 2026-10-02 with the Web line taken from services.txt and the rest of the login message counted when the mark is chosen | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `conf.d/main` | 100 percent (14 of 14 lines, 13 bats tests, kcov 43), measured on 2026-09-30 with the CrowdSec identity (tracker#47): run against a scratch tree through `KEEL_CONF_ROOT` | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `packages/keel-core` | built with `dpkg-buildpackage` and linted clean with lintian on trixie; its fields, files and manifest read back by 15 bats tests | `tests/package.bats`, the check `packages / build` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of the three project-authored shell files (107 bats tests
+measured number of the three project-authored shell files (169 bats tests
 in all); it
 is only ever raised. `tests/coverage.sh` measures each library against the
 bats file that exercises it and fails when any one is below the

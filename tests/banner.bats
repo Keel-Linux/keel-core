@@ -18,6 +18,10 @@ setup() {
     KEEL_BANNER_MARK_WIDE="$KEEL_BANNER_DIR/banner-wide.txt"
     KEEL_BANNER_MARK_UTF8="$KEEL_BANNER_DIR/banner-utf8.txt"
     KEEL_BANNER_MARK_SMALL_UTF8="$KEEL_BANNER_DIR/banner-small-utf8.txt"
+    # Most tests below are about an appliance that serves the web over
+    # HTTPS, as Keel Web in a cloud mode does; the ones about Core, which
+    # serves none, set it empty.
+    KEEL_BANNER_WEB=https
     SCRATCH=$(mktemp -d)
 }
 
@@ -159,6 +163,187 @@ teardown() {
     run keel_banner_address_lines
     [ "$status" -eq 0 ]
     [ "$output" = "no address: the appliance is not reachable yet" ]
+}
+
+@test "address_lines: an appliance with no web server lists SSH only" {
+    KEEL_BANNER_WEB=""
+    run keel_banner_address_lines 2001:db8:1::10 192.0.2.10
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
+    [ "${lines[1]}" = "IPv4 SSH:  root@192.0.2.10" ]
+    [[ $output != *Web* ]]
+}
+
+@test "address_lines: the web line takes the scheme the appliance serves" {
+    KEEL_BANNER_WEB=http
+    run keel_banner_address_lines 2001:db8:1::10 192.0.2.10
+    [ "${lines[0]}" = "IPv6 Web:  http://[2001:db8:1::10]" ]
+    [ "${lines[2]}" = "IPv4 Web:  http://192.0.2.10" ]
+}
+
+@test "address_lines: the library alone assumes no web server" {
+    run env -i bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         keel_banner_address_lines 2001:db8:1::10"
+    [ "$output" = "IPv6 SSH:  root@2001:db8:1::10" ]
+}
+
+# whether the appliance serves the web
+#
+# services.txt is the declaration confconsole's usage screen reads, and each
+# layer of the chain installs its own over its base's: Core's lists Webmin
+# and SSH, Keel Web's and every web application's start with a Web line.
+
+@test "web_scheme: Core's services name no web server" {
+    run keel_banner_web_scheme < "$BATS_TEST_DIRNAME/../overlay/etc/confconsole/services.txt"
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+@test "web_scheme: Keel Web's services name http" {
+    run keel_banner_web_scheme <<'TXT'
+Web:        http://[$ipaddr6]
+Webmin:     https://[$ipaddr6]:12321
+SSH/SFTP:   root@$ipaddr6 (port 22)
+
+Web:        http://$ipaddr
+TXT
+    [ "$status" -eq 0 ]
+    [ "$output" = http ]
+}
+
+@test "web_scheme: an indented Web line with https" {
+    run keel_banner_web_scheme <<'TXT'
+SSH/SFTP:   root@$ipaddr6 (port 22)
+  Web:	https://$ipaddr
+TXT
+    [ "$output" = https ]
+}
+
+@test "web_scheme: a Web line with no URL, or another scheme, is skipped" {
+    run keel_banner_web_scheme <<'TXT'
+Web:        see the documentation
+Web:        ftp://$ipaddr
+Webmin:     https://$ipaddr:12321
+TXT
+    [ "$status" -eq 1 ]
+    run keel_banner_web_scheme <<'TXT'
+Web:        ftp://$ipaddr
+Web:        http://$ipaddr
+TXT
+    [ "$output" = http ]
+}
+
+@test "web_scheme: a last line without a newline is read" {
+    run keel_banner_web_scheme < <(printf 'Web: https://$ipaddr')
+    [ "$output" = https ]
+}
+
+@test "web_scheme: an empty file names no web server" {
+    run keel_banner_web_scheme < /dev/null
+    [ "$status" -eq 1 ]
+}
+
+# the rest of the login message
+#
+# What pam_motd prints after the banner takes rows of the same screen, so
+# the mark is chosen with them counted: the drop-ins named after this one,
+# measured as the terminal lays them out.
+
+@test "text_rows: one row a line, blank lines included" {
+    run keel_banner_text_rows 80 < <(printf 'a\n\nb\n\n')
+    [ "$output" = 4 ]
+}
+
+@test "text_rows: a line as wide as the terminal is one row, one more wraps" {
+    run keel_banner_text_rows 10 < <(printf '%s\n' 0123456789)
+    [ "$output" = 1 ]
+    run keel_banner_text_rows 10 < <(printf '%s\n' 0123456789a)
+    [ "$output" = 2 ]
+    run keel_banner_text_rows 10 < <(printf '%s\n' \
+        012345678901234567890123456789)
+    [ "$output" = 3 ]
+}
+
+@test "text_rows: escape sequences take no column" {
+    # 08-turnkey-confconsole's bold, as tput prints it for xterm and for
+    # the Linux console: CSI, and sgr0's "ESC ( B" charset selection
+    local line=$'    For Advanced commandline config run:    \e[1mconfconsole\e(B\e[m'
+    run keel_banner_text_rows 55 <<< "$line"
+    [ "$output" = 1 ]
+    run keel_banner_text_rows 54 <<< "$line"
+    [ "$output" = 2 ]
+    run keel_banner_text_rows 4 < <(printf '\e]0;title\aab\ecd\n')
+    [ "$output" = 1 ]
+}
+
+@test "visible: what each kind of escape sequence leaves on the screen" {
+    # CSI; OSC ended by BEL, by ST, or by whichever comes first; an OSC
+    # left open; a charset selection; a two-byte one (ESC c, a reset)
+    run keel_banner_visible $'a\e[1;33mb\e[0mc'
+    [ "$output" = abc ]
+    run keel_banner_visible $'\e]0;title\aab'
+    [ "$output" = ab ]
+    run keel_banner_visible $'\e]8;;http://x\e\\ab\e]8;;\e\\'
+    [ "$output" = ab ]
+    run keel_banner_visible $'\e]0;t\e\\a\a'
+    [ "$output" = $'a\a' ]
+    run keel_banner_visible $'ab\e]0;never ended'
+    [ "$output" = ab ]
+    run keel_banner_visible $'\e(Bab\e)0'
+    [ "$output" = ab ]
+    run keel_banner_visible $'\ecab'
+    [ "$output" = ab ]
+    run keel_banner_visible $'a\tb'
+    [ "$output" = 'a       b' ]
+}
+
+@test "text_rows: a tab moves to the next multiple of eight" {
+    run keel_banner_text_rows 9 < <(printf 'ab\tcd\n')
+    [ "$output" = 2 ]
+    run keel_banner_text_rows 10 < <(printf 'ab\tcd\n')
+    [ "$output" = 1 ]
+}
+
+@test "text_rows: a character is a column, whatever the caller's locale" {
+    run env LC_ALL=C bash -c \
+        "source '$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh'
+         printf '%s\n' '██████' | keel_banner_text_rows 6"
+    [ "$output" = 1 ]
+}
+
+@test "text_rows: a last line without a newline counts, nothing is zero" {
+    run keel_banner_text_rows 80 < <(printf 'a\nb')
+    [ "$output" = 2 ]
+    run keel_banner_text_rows 80 < /dev/null
+    [ "$output" = 0 ]
+}
+
+@test "after: the drop-ins named after this one, in the order given" {
+    run keel_banner_after 00-keel-banner <<'LIST'
+/etc/update-motd.d/00-keel-banner
+/etc/update-motd.d/00-turnkey-sysinfo
+/etc/update-motd.d/06-keel-init
+/etc/update-motd.d/10-uname
+LIST
+    [ "${#lines[@]}" -eq 3 ]
+    [ "${lines[0]}" = /etc/update-motd.d/00-turnkey-sysinfo ]
+    [ "${lines[2]}" = /etc/update-motd.d/10-uname ]
+}
+
+@test "after: one named before this one, or this one, is not after it" {
+    run keel_banner_after 05-keel-banner < <(printf '%s\n' \
+        /x/00-turnkey-sysinfo /x/05-keel-banner /x/05-keel-bannerz /x/50-z)
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = /x/05-keel-bannerz ]
+    [ "${lines[1]}" = /x/50-z ]
+}
+
+@test "after: names compare byte by byte, as run-parts orders them" {
+    run keel_banner_after Z < <(printf '%s\n' /x/B /x/a /x/_)
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = /x/a ]
+    [ "${lines[1]}" = /x/_ ]
 }
 
 # the mark that fits
@@ -651,6 +836,94 @@ draw_mark() {
     [ "${ROWS[mark_rows + 4]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
 }
 
+@test "render: Core, with no web server, lists SSH only" {
+    KEEL_BANNER_WEB=""
+    local mark_rows
+    mark_rows=$(mark_rows_of "$KEEL_BANNER_MARK")
+    run keel_banner_render 40 80 ascii "Keel Linux core" 19.0-trixie-amd64 \
+        2001:db8:1::10 192.0.2.10
+    [[ $output != *Web* ]]
+    rows_of
+    [ "${#ROWS[@]}" -eq $((mark_rows + 5)) ]
+    [ "${ROWS[mark_rows + 3]}" = "IPv6 SSH:  root@2001:db8:1::10" ]
+    [ "${ROWS[mark_rows + 4]}" = "IPv4 SSH:  root@192.0.2.10" ]
+}
+
+@test "render: the rows of the login message below push the choice down" {
+    # a terminal with exactly the room for the full mark and the banner's
+    # own text: one row of message below takes the full mark away, and a
+    # message as tall as the terminal leaves no room for any mark
+    local body=7 rows below
+    rows=$(($(mark_rows_of "$KEEL_BANNER_MARK") + body \
+        + KEEL_BANNER_RESERVED_ROWS))
+    run keel_banner_render "$rows" 80 ascii core 19.0 2001:db8:1::10 \
+        192.0.2.10
+    rows_of
+    assert_centred_rows 80 "$KEEL_BANNER_MARK"
+    KEEL_BANNER_BELOW_ROWS=1
+    run keel_banner_render "$rows" 80 ascii core 19.0 2001:db8:1::10 \
+        192.0.2.10
+    rows_of
+    assert_centred_rows 80 "$KEEL_BANNER_MARK_SMALL"
+    below=$((rows - body - KEEL_BANNER_RESERVED_ROWS))
+    KEEL_BANNER_BELOW_ROWS=$below
+    run keel_banner_render "$rows" 80 ascii core 19.0 2001:db8:1::10 \
+        192.0.2.10
+    rows_of
+    [ "${#ROWS[@]}" -eq $((body - 1)) ]
+    [ "${ROWS[0]}" = "core 19.0" ]
+}
+
+# core_motd_rest: what pam_motd printed after the banner at a Core login on
+# the step 8 image (screenshots 112 to 119): the sysinfo, the confconsole
+# line in bold as tput writes it, and uname, which is wider than 80 columns.
+core_motd_rest() {
+    printf '%s\n' 'Welcome to Core, Debian 13/Trixie' '' \
+        '  System information for Fri Oct 02 11:36:10 2026 (UTC+0000)' '' \
+        '    System load:  0.57               Memory usage:  18.7%' \
+        '    Processes:    33                 Swap usage:    5.1%' \
+        '    Usage of /:   26.0% of 29.36GB   IP address for eth0: 10.0.3.98' \
+        '' \
+        $'    For Advanced commandline config run:    \e[1mconfconsole\e(B\e[m' \
+        '' '  For more info see: https://github.com/Keel-Linux/confconsole' \
+        '' \
+        'Linux core 6.12.107+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.107-1 (2026-08-29) x86_64'
+}
+
+@test "render: on the maintainer's four terminals the whole login message fits" {
+    # The banner, the rest of the message, the blank line the drop-in ends
+    # with and the prompt: nothing scrolls off the top. 80 by 24 has no room
+    # for any mark once the message is counted, 100 by 30 has room for one,
+    # and the larger two take the wide mark whole.
+    KEEL_BANNER_WEB=""
+    local size rows cols charset below body mark
+    for charset in utf8 ascii; do
+        for size in "24 80" "30 100" "45 160" "50 200"; do
+            rows=${size% *}
+            cols=${size#* }
+            below=$(($(core_motd_rest | keel_banner_text_rows "$cols") + 1))
+            KEEL_BANNER_BELOW_ROWS=$below
+            body=$((3 + 2 + below))
+            run keel_banner_render "$rows" "$cols" "$charset" \
+                "Keel Linux core" 19.0-trixie-amd64 fd42:b2:0:1::98 10.0.3.98
+            [ "$status" -eq 0 ]
+            rows_of
+            [ $((${#ROWS[@]} + below + KEEL_BANNER_RESERVED_ROWS)) -le "$rows" ]
+            if mark=$(expected_mark "$charset" "$rows" "$cols" "$body"); then
+                assert_centred_rows "$cols" "$mark"
+                [ "${#ROWS[@]}" -eq $(($(mark_rows_of "$mark") + body - below)) ]
+            else
+                [ "${ROWS[0]}" = "Keel Linux core 19.0-trixie-amd64" ]
+            fi
+            case "$charset $cols" in
+                *" 80") [ "${ROWS[0]}" = "Keel Linux core 19.0-trixie-amd64" ] ;;
+                *" 100") [ "${ROWS[0]}" != "Keel Linux core 19.0-trixie-amd64" ] ;;
+                utf8*) [ "$mark" = "$KEEL_BANNER_MARK_WIDE" ] ;;
+            esac
+        done
+    done
+}
+
 # the address probe
 
 @test "pick_ipv6: a static address is preferred over a dynamic one" {
@@ -1027,18 +1300,107 @@ expected_mark() {
 # that status.
 
 # run_dropin APPNAME_CONTENT: runs 00-keel-banner on the library of this
-# repository with /etc/appname holding APPNAME_CONTENT, on a 24 by 80
-# terminal in the C locale.
+# repository with /etc/appname holding APPNAME_CONTENT, on a terminal of
+# DROPIN_LINES rows (24 unless a test says) by 80 in the C locale. The
+# drop-in directory is $SCRATCH/motd.d, holding a copy of the banner and
+# whatever a test puts there; /etc/motd is $SCRATCH/motd and services.txt
+# is $SCRATCH/services.txt, each absent unless a test writes it.
 run_dropin() {
     printf '%s' "$1" > "$SCRATCH/appname"
     printf 'turnkey-web-19.0-trixie-amd64\n' > "$SCRATCH/version"
-    run env -i PATH="$PATH" LINES=24 COLUMNS=80 LC_ALL=C \
+    mkdir -p "$SCRATCH/motd.d"
+    cp "$BATS_TEST_DIRNAME/../overlay/etc/update-motd.d/00-keel-banner" \
+        "$SCRATCH/motd.d/"
+    run env -i PATH="$PATH" LINES="${DROPIN_LINES:-24}" COLUMNS=80 LC_ALL=C \
         KEEL_BANNER_LIB="$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh" \
         KEEL_BANNER_DIR="$KEEL_BANNER_DIR" \
         KEEL_VERSION_FILE="$SCRATCH/version" \
         KEEL_APPNAME_FILE="$SCRATCH/appname" \
         KEEL_LOCALE_FILE=/nonexistent \
-        bash "$BATS_TEST_DIRNAME/../overlay/etc/update-motd.d/00-keel-banner"
+        KEEL_MOTD_DIR="$SCRATCH/motd.d" \
+        KEEL_MOTD_FILE="$SCRATCH/motd" \
+        KEEL_SERVICES_FILE="$SCRATCH/services.txt" \
+        ${DROPIN_ENV:+"$DROPIN_ENV"} \
+        bash "$SCRATCH/motd.d/00-keel-banner"
+}
+
+# motd_script NAME LINES: an executable drop-in printing LINES lines
+motd_script() {
+    mkdir -p "$SCRATCH/motd.d"
+    printf '#!/bin/sh\nfor i in $(seq %s); do echo "line $i"; done\n' "$2" \
+        > "$SCRATCH/motd.d/$1"
+    chmod +x "$SCRATCH/motd.d/$1"
+}
+
+# has_mark, no_mark: the banner in $output opens with a mark, or with its
+# title
+has_mark() {
+    [[ ${lines[0]} != "My Site"* ]]
+}
+
+no_mark() {
+    [[ ${lines[0]} == "My Site"* ]]
+}
+
+@test "drop-in: no services.txt, or Core's, and there is no Web line" {
+    DROPIN_LINES=60 run_dropin 'My Site'
+    [[ $output != *"Web:"* ]]
+    cp "$BATS_TEST_DIRNAME/../overlay/etc/confconsole/services.txt" \
+        "$SCRATCH/services.txt"
+    DROPIN_LINES=60 run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    [[ $output != *"Web:"* ]]
+}
+
+@test "drop-in: an appliance whose services.txt lists Web has its Web line" {
+    local global
+    global=$( (ip -6 addr show scope global; ip -4 addr show scope global) \
+        | grep -c 'inet' || :)
+    if [ "${global:-0}" -eq 0 ]; then
+        skip "this machine has no global address to list"
+    fi
+    printf 'Web:        http://$ipaddr\n' > "$SCRATCH/services.txt"
+    DROPIN_LINES=60 run_dropin 'My Site'
+    [[ $output == *"Web:  http://"* ]]
+}
+
+@test "drop-in: the drop-ins named after it are counted, not printed" {
+    DROPIN_LINES=60 run_dropin 'My Site'
+    has_mark
+    # one named before it is not below it
+    motd_script 00-a-before 60
+    DROPIN_LINES=60 run_dropin 'My Site'
+    has_mark
+    motd_script 50-after 55
+    DROPIN_LINES=60 run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    no_mark
+    [[ $output != *"line 1"* ]]
+}
+
+@test "drop-in: /etc/motd, which pam_motd prints last, is counted" {
+    DROPIN_LINES=60 run_dropin 'My Site'
+    has_mark
+    seq 55 > "$SCRATCH/motd"
+    DROPIN_LINES=60 run_dropin 'My Site'
+    no_mark
+}
+
+@test "drop-in: a drop-in that hangs costs its timeout, not the login" {
+    mkdir -p "$SCRATCH/motd.d"
+    printf '#!/bin/sh\nsleep 60\n' > "$SCRATCH/motd.d/50-hangs"
+    chmod +x "$SCRATCH/motd.d/50-hangs"
+    local start=$SECONDS
+    DROPIN_ENV=KEEL_MOTD_TIMEOUT=1 DROPIN_LINES=60 run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    [ $((SECONDS - start)) -lt 10 ]
+    has_mark
+}
+
+@test "drop-in: run while it measures the others, it prints nothing" {
+    DROPIN_ENV=KEEL_BANNER_MEASURING=1 run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
 }
 
 @test "drop-in: /etc/appname with a trailing newline names the appliance" {
