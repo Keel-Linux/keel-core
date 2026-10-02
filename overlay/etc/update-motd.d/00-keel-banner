@@ -57,7 +57,9 @@ app=$(keel_banner_app_name "$version_string") || app=$(hostname)
 version=$(keel_banner_version "$version_string") || version=""
 
 if [ -r "$KEEL_APPNAME_FILE" ]; then
-    read -r name < "$KEEL_APPNAME_FILE" || name=""
+    # read fails on a last line with no newline although it has read it,
+    # so the name is kept whenever one was read.
+    read -r name < "$KEEL_APPNAME_FILE" || [ -n "$name" ]
 else
     name="Keel Linux $app"
 fi

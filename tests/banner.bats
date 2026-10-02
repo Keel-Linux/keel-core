@@ -1018,3 +1018,37 @@ expected_mark() {
     rows_of
     assert_centred_rows 200 "$SCRATCH/banner-small-utf8.txt"
 }
+
+# the drop-in itself, and /etc/appname
+#
+# /etc/appname is written by hand as often as by a tool, and an editor or
+# `printf` may leave it without a trailing newline. read returns non-zero
+# on such a file although it has read the name, so the name must survive
+# that status.
+
+# run_dropin APPNAME_CONTENT: runs 00-keel-banner on the library of this
+# repository with /etc/appname holding APPNAME_CONTENT, on a 24 by 80
+# terminal in the C locale.
+run_dropin() {
+    printf '%s' "$1" > "$SCRATCH/appname"
+    printf 'turnkey-web-19.0-trixie-amd64\n' > "$SCRATCH/version"
+    run env -i PATH="$PATH" LINES=24 COLUMNS=80 LC_ALL=C \
+        KEEL_BANNER_LIB="$BATS_TEST_DIRNAME/../overlay/usr/lib/keel/banner.sh" \
+        KEEL_BANNER_DIR="$KEEL_BANNER_DIR" \
+        KEEL_VERSION_FILE="$SCRATCH/version" \
+        KEEL_APPNAME_FILE="$SCRATCH/appname" \
+        KEEL_LOCALE_FILE=/nonexistent \
+        bash "$BATS_TEST_DIRNAME/../overlay/etc/update-motd.d/00-keel-banner"
+}
+
+@test "drop-in: /etc/appname with a trailing newline names the appliance" {
+    run_dropin $'My Site\n'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"My Site"* ]]
+}
+
+@test "drop-in: /etc/appname without a trailing newline still names it" {
+    run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"My Site"* ]]
+}
