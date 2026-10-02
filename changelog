@@ -1,3 +1,26 @@
+keel-core-19.0 (5) keel; urgency=low
+
+  * Console banner: no Web line on an appliance that serves no web. Core
+    has no web server (Webmin is on 12321), yet its login message listed
+    "IPv6 Web: https://..." and "IPv4 Web: https://..." (screenshot 014
+    of step 8). The banner now reads confconsole's services.txt, which
+    each layer of the chain installs over its base's, and shows a Web
+    line only when it has one, with its scheme: none on Core, http on
+    Keel Web, whatever a web application declares.
+
+  * Console banner: the mark is chosen with the whole login message
+    counted, not its own lines alone. At 80x24 and 100x30 the text
+    pam_motd prints after the banner (sysinfo, the confconsole line,
+    uname) pushed the art off the top of the screen (screenshots 112 to
+    115). The drop-in now runs the drop-ins named after it once more to
+    measure them, each cut after 5 seconds, adds /etc/motd and the
+    prompt, counts escape sequences as nothing and long lines as the
+    rows they wrap onto, and takes the largest mark that fits with all of
+    it: none at 80x24, the small one at 100x30, the wide one at 160x45
+    and 200x50.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Fri, 02 Oct 2026 14:00:00 +0000
+
 keel-core-19.0 (4) keel; urgency=low
 
   * Console banner: the maintainer's art replaces the old hand-made mark.

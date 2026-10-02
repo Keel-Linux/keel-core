@@ -19,9 +19,13 @@
 #     alignment. The title and the addresses stay at column one;
 #   - IPv6 first, IPv4 after and only when it is there, and an address that
 #     is the host of a URL is bracketed: https://[2001:db8:1::10];
-#   - the banner never scrolls the addresses away: the largest mark that
-#     fits is taken, in the order wide, full, small, and none at all before
-#     the text loses a line.
+#   - a Web line only on an appliance that serves the web, with the scheme
+#     it declares: Core has no web server, Keel Web and the applications
+#     built on it do;
+#   - nothing of the login message scrolls off the top: the largest mark
+#     that fits with the banner's text, the rest of the message and the
+#     prompt below it is taken, in the order wide, full, small, and none at
+#     all before the text loses a line.
 #
 # The mark files are the maintainer's console art, installed as he drew it
 # in /etc/keel: banner-wide.txt (the mark with the KEEL LINUX lettering,
@@ -48,6 +52,21 @@ KEEL_BANNER_COLS=80
 # Lines kept free under the banner for the shell prompt, so the last
 # address is not the last row of the screen.
 KEEL_BANNER_RESERVED_ROWS=1
+
+# Set by the caller after sourcing this file, the two facts of the machine
+# the rendering depends on besides the terminal:
+#
+# KEEL_BANNER_WEB, the scheme of the appliance's web server, http or https
+# (keel_banner_web_scheme), empty when it serves no web: then there is no
+# Web line, which is Core's case and what is assumed when nobody says.
+KEEL_BANNER_WEB=""
+# KEEL_BANNER_BELOW_ROWS, the rows the rest of the login message takes
+# under the banner on this terminal (keel_banner_text_rows), the prompt
+# not included: it is KEEL_BANNER_RESERVED_ROWS.
+KEEL_BANNER_BELOW_ROWS=0
+
+# A tab stop, every eight columns, as a terminal sets them at reset.
+KEEL_BANNER_TAB=8
 
 # keel_banner_marks CHARSET
 # The paths of the ladder for CHARSET, largest first, one per line: the
@@ -205,9 +224,109 @@ keel_banner_is_ipv6() {
     [[ ${1-} == *:* ]]
 }
 
+# keel_banner_web_scheme
+# stdin: confconsole's services.txt, the lines its usage screen shows,
+# which each layer of the chain installs over its base's. Prints http or
+# https, the scheme of the first "Web:" line that names a URL; returns 1
+# when there is none, an appliance with no web server (Core lists Webmin
+# and SSH only).
+keel_banner_web_scheme() {
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=${line#"${line%%[![:space:]]*}"}
+        [[ $line == Web:* ]] || continue
+        line=${line#Web:}
+        line=${line#"${line%%[![:space:]]*}"}
+        case "$line" in
+            https://*) printf 'https\n' ;;
+            http://*) printf 'http\n' ;;
+            *) continue ;;
+        esac
+        return 0
+    done
+    return 1
+}
+
+# keel_banner_visible LINE
+# LINE as the terminal shows it: escape sequences, which take no column,
+# removed (CSI such as tput's bold, OSC, and the two- and three-byte ones
+# such as sgr0's "ESC ( B"), and each tab expanded to the next tab stop.
+keel_banner_visible() {
+    local line=${1-} out="" rest bel st
+    # ECMA-48: parameter bytes 0x30-0x3F, intermediates 0x20-0x2F, a final
+    # byte 0x40-0x7E; and ESC with an intermediate, then one byte
+    local csi='^\[[0-?]*[ -/]*[@-~](.*)$' three='^[ -/].(.*)$'
+    while [[ $line == *$'\e'* ]]; do
+        out+=${line%%$'\e'*}
+        rest=${line#*$'\e'}
+        if [[ $rest =~ $csi ]]; then
+            line=${BASH_REMATCH[1]}
+        elif [[ $rest == ']'* ]]; then
+            # OSC, to BEL or to ST (ESC \), whichever comes first; one
+            # left open takes the rest of the line
+            bel=${rest%%$'\a'*}
+            st=${rest%%$'\e\\'*}
+            if [ "${#bel}" -lt "${#st}" ]; then
+                line=${rest:${#bel}+1}
+            elif [ "${#st}" -lt "${#rest}" ]; then
+                line=${rest:${#st}+2}
+            else
+                line=""
+            fi
+        elif [[ $rest =~ $three ]]; then
+            line=${BASH_REMATCH[1]}
+        else
+            line=${rest:1}
+        fi
+    done
+    out+=$line
+    while [[ $out == *$'\t'* ]]; do
+        rest=${out%%$'\t'*}
+        printf -v line '%*s' $((KEEL_BANNER_TAB \
+            - ${#rest} % KEEL_BANNER_TAB)) ''
+        out=$rest$line${out#*$'\t'}
+    done
+    printf '%s\n' "$out"
+}
+
+# keel_banner_text_rows WIDTH
+# stdin: text a terminal WIDTH columns wide prints. Prints the rows it
+# takes there: one for each line, blank ones too, and one more for every
+# WIDTH columns a long line wraps onto. A column is a character, counted
+# in C.UTF-8 as keel_banner_mark_size counts them.
+keel_banner_text_rows() {
+    local LC_ALL=C.UTF-8
+    local width=$1 line rows=0 length
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=$(keel_banner_visible "$line")
+        length=${#line}
+        if [ "$length" -le "$width" ]; then
+            rows=$((rows + 1))
+        else
+            rows=$((rows + (length + width - 1) / width))
+        fi
+    done
+    printf '%s\n' "$rows"
+}
+
+# keel_banner_after NAME
+# stdin: the drop-ins run-parts runs, one path a line, in its order. Prints
+# those whose file name sorts after NAME byte by byte, as run-parts orders
+# them: what pam_motd prints below the drop-in called NAME.
+keel_banner_after() {
+    local LC_ALL=C
+    local name=$1 path
+    while IFS= read -r path; do
+        if [[ ${path##*/} > $name ]]; then
+            printf '%s\n' "$path"
+        fi
+    done
+}
+
 # keel_banner_address_lines ADDRESS...
 # The address block: web and SSH for each address, IPv6 before IPv4 whatever
-# order the arguments came in, IPv4 only when it is present. The IPv6
+# order the arguments came in, IPv4 only when it is present, and the web
+# line only when KEEL_BANNER_WEB names the scheme of a web server. The IPv6
 # address is bracketed where it is the host of a URL and bare where it is
 # not, which is the form the identity asks for and the one confconsole
 # already prints. With no address at all it says so in words, because a
@@ -228,11 +347,15 @@ keel_banner_address_lines() {
         return 0
     fi
     for addr in "${six[@]}"; do
-        printf 'IPv6 Web:  https://[%s]\n' "$addr"
+        if [ -n "$KEEL_BANNER_WEB" ]; then
+            printf 'IPv6 Web:  %s://[%s]\n' "$KEEL_BANNER_WEB" "$addr"
+        fi
         printf 'IPv6 SSH:  root@%s\n' "$addr"
     done
     for addr in "${four[@]}"; do
-        printf 'IPv4 Web:  https://%s\n' "$addr"
+        if [ -n "$KEEL_BANNER_WEB" ]; then
+            printf 'IPv4 Web:  %s://%s\n' "$KEEL_BANNER_WEB" "$addr"
+        fi
         printf 'IPv4 SSH:  root@%s\n' "$addr"
     done
 }
@@ -318,14 +441,15 @@ keel_banner_center_mark() {
 # The whole block, the mark taken from the ladder of CHARSET (utf8 or
 # ascii, keel_banner_charset). Three rows of text go with the address
 # block: the blank row under the mark, the title, and the blank row under
-# the title. The mark is centred on COLS, the title and the addresses are
-# not.
+# the title; the KEEL_BANNER_BELOW_ROWS of the rest of the login message
+# are counted with them, since they share the screen. The mark is centred
+# on COLS, the title and the addresses are not.
 keel_banner_render() {
     local rows=$1 cols=$2 charset=$3 name=$4 version=$5
     shift 5
     local -a address_lines=()
     mapfile -t address_lines < <(keel_banner_address_lines "$@")
-    local body=$((3 + ${#address_lines[@]}))
+    local body=$((3 + ${#address_lines[@]} + KEEL_BANNER_BELOW_ROWS))
     local -a marks=()
     mapfile -t marks < <(keel_banner_marks "$charset")
     local mark
