@@ -9,3 +9,5 @@
 execute_after_dh_auto_install:
 	install -D -m 0644 manifest.yaml \
 		debian/keel-core/usr/share/keel/appliances/core.yaml
+	install -D -m 0644 monit-after-core.conf \
+		debian/keel-core/usr/lib/systemd/system/monit.service.d/keel-core.conf

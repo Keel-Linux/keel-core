@@ -23,7 +23,9 @@ Description: Keel Core, the appliance every Keel appliance is built on
  The appliance manifest of Keel Core (handbook decisions 0036 and 0041),
  installed as /usr/share/keel/appliances/core.yaml: the four overlays Core
  carries with their state in each installation mode, and Core's own
- processes (sshd, Webmin and postfix) with their ports and checks.
+ processes (sshd, Webmin and postfix) with their ports and checks. A
+ systemd drop-in starts monit after those three units, so its first cycle
+ does not find them still starting.
  .
  It depends on the four overlay packages, installer, wireguard, etcd and
  crowdsec, and on keel 0.13.0, the first keel that converges the overlays'
