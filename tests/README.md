@@ -70,9 +70,10 @@ container:
     keel inspect --output /root/emitted.yaml
     keel spec apply --system --spec /root/emitted.yaml   # 0 change(s)
 
-`inspect` cannot read the monitor's channels back (they are in
-`/etc/keel/monitor.json`, which it does not repeat), so the channel is
-added to the emitted file before it is applied, as its report says. And
+Before keel 0.15.1, `inspect` could not read the monitor's channels back
+(they are in `/etc/keel/monitor.json`), so the channel was added to the
+emitted file before it was applied; keel 0.15.1 reads them back, tokens
+by file (keel#60), and the emitted file applies as it is. And
 Monit's `/etc/keel/monit/keel-manifest.conf` checks sshd, webmin and
 postfix and nothing else. Core has no web shell: TurnKey removed
 shellinabox in 18.0, so the manifest does not declare the `webshell` of

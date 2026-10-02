@@ -53,10 +53,43 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
     [[ "$output" == "-rw-r--r-- root/root "* ]]
 }
 
-@test "it installs nothing but the manifest and its documentation" {
+@test "it installs the manifest, monit's ordering and its documentation" {
     run bash -c "dpkg-deb -c '$DEB' | awk '{print \$6}' | grep -v '/\$' | sort"
     [ "$status" -eq 0 ]
-    [ "$output" = $'./usr/share/doc/keel-core/changelog.gz\n./usr/share/doc/keel-core/copyright\n./usr/share/keel/appliances/core.yaml' ]
+    [ "$output" = $'./usr/lib/systemd/system/monit.service.d/keel-core.conf\n./usr/share/doc/keel-core/changelog.gz\n./usr/share/doc/keel-core/copyright\n./usr/share/keel/appliances/core.yaml' ]
+}
+
+# keel#61: monit's first cycle after boot found webmin and postfix
+# inactive, because monit started beside them; its checks are the units
+# of the manifest's processes, so monit starts after those units
+@test "monit starts after the units of Core's processes, and only that" {
+    dpkg-deb -x "$DEB" "$BUILD/root"
+    dropin="$BUILD/root/usr/lib/systemd/system/monit.service.d/keel-core.conf"
+    run grep -v '^#' "$dropin"
+    [ "$status" -eq 0 ]
+    [ "$output" = $'[Unit]\nAfter=ssh.service webmin.service postfix.service' ]
+    units=$(manifest '" ".join(p["unit"] for p in m["processes"])')
+    [ "$(sed -n 's/^After=//p' "$dropin")" = "$units" ]
+}
+
+@test "monit's ordering is a plain file of mode 0644, owned by root" {
+    run bash -c "dpkg-deb -c '$DEB' | grep ' ./usr/lib/systemd/system/monit.service.d/keel-core.conf$'"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "-rw-r--r-- root/root "* ]]
+}
+
+@test "systemd reads the ordering without a complaint" {
+    if ! command -v systemd-analyze >/dev/null; then
+        skip "systemd-analyze is not installed"
+    fi
+    dpkg-deb -x "$DEB" "$BUILD/root"
+    mkdir -p "$BUILD/units"
+    printf '[Service]\nExecStart=/bin/true\n' > "$BUILD/units/monit.service"
+    mkdir -p "$BUILD/units/monit.service.d"
+    cp "$BUILD/root/usr/lib/systemd/system/monit.service.d/keel-core.conf" \
+        "$BUILD/units/monit.service.d/"
+    run systemd-analyze verify --man=no "$BUILD/units/monit.service"
+    [[ "$output" != *"keel-core.conf"* ]]
 }
 
 # the manifest: the Core table of decision 0041
