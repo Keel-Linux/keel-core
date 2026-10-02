@@ -1,3 +1,13 @@
+keel-core-19.0 (6) keel; urgency=low
+
+  * Console banner: the drop-ins measured below the banner are listed as
+    pam_motd runs them, run-parts --lsbsysinit. Plain run-parts skipped
+    LSB hierarchical names such as 50-org.example-motd, whose lines then
+    went uncounted and could push the art off the top again (review of
+    #22).
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Fri, 02 Oct 2026 16:00:00 +0000
+
 keel-core-19.0 (5) keel; urgency=low
 
   * Console banner: no Web line on an appliance that serves no web. Core

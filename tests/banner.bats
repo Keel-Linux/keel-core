@@ -1378,6 +1378,17 @@ no_mark() {
     [[ $output != *"line 1"* ]]
 }
 
+@test "drop-in: the drop-ins are the ones pam_motd runs, LSB names too" {
+    # pam_motd runs "run-parts --lsbsysinit", which also takes the LSB
+    # hierarchical names a plain run-parts skips
+    DROPIN_LINES=60 run_dropin 'My Site'
+    has_mark
+    motd_script 50-org.example-motd 55
+    DROPIN_LINES=60 run_dropin 'My Site'
+    [ "$status" -eq 0 ]
+    no_mark
+}
+
 @test "drop-in: /etc/motd, which pam_motd prints last, is counted" {
     DROPIN_LINES=60 run_dropin 'My Site'
     has_mark
