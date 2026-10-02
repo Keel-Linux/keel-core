@@ -88,17 +88,20 @@ lines.
 The renderer is sourceable, so the block can be printed without an
 appliance. From the repository root:
 
-    KEEL_BANNER_MARK=overlay/etc/keel/banner.txt \
-    KEEL_BANNER_MARK_SMALL=overlay/etc/keel/banner-small.txt \
+    KEEL_BANNER_DIR=overlay/etc/keel \
     bash -c 'source overlay/usr/lib/keel/banner.sh
-             keel_banner_render 40 100 "Keel Linux core" 19.0-trixie-amd64 \
-                 2001:db8:1::10 192.0.2.10'
+             keel_banner_render 45 160 utf8 "Keel Linux core" \
+                 19.0-trixie-amd64 2001:db8:1::10 192.0.2.10'
 
-The first two arguments are the rows and columns of the terminal. The mark is
-centred on the columns as a block; a terminal with no room for the full mark
-falls back to `banner-small.txt`, and one narrower than the small mark drops
-the mark and keeps the addresses. On an appliance the same block comes from
-`/etc/update-motd.d/00-keel-banner` at every login.
+The first two arguments are the rows and columns of the terminal, the third
+the character set (`utf8` or `ascii`). The mark is the largest of the ladder
+that fits, centred on the columns as a block: in UTF-8 `banner-wide.txt`,
+then `banner-utf8.txt`, then `banner-small-utf8.txt`; in ASCII `banner.txt`,
+then `banner-small.txt`. A terminal with room for none of them keeps the
+title and the addresses. On an appliance the same block comes from
+`/etc/update-motd.d/00-keel-banner` at every login, which takes the size from
+`LINES` and `COLUMNS`, then `stty size`, then 24 by 80, and the character set
+from `LC_ALL`, `LC_CTYPE` and `LANG`, then `/etc/default/locale`.
 
 ## The boot test by hand
 
