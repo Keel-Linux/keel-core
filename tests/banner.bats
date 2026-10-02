@@ -1353,8 +1353,10 @@ no_mark() {
 }
 
 @test "drop-in: an appliance whose services.txt lists Web has its Web line" {
-    if ! ip -6 addr show scope global | grep -q inet6 \
-        && ! ip -4 addr show scope global | grep -q inet; then
+    local global
+    global=$( (ip -6 addr show scope global; ip -4 addr show scope global) \
+        | grep -c 'inet' || :)
+    if [ "${global:-0}" -eq 0 ]; then
         skip "this machine has no global address to list"
     fi
     printf 'Web:        http://$ipaddr\n' > "$SCRATCH/services.txt"
