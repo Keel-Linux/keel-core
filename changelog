@@ -1,3 +1,22 @@
+keel-core-19.0 (7) keel; urgency=low
+
+  * Console banner: the address an operator can reach. A Keel Web machine
+    with the WireGuard overlay printed "IPv6 Web: http://[fd11:a58a:88ef::1]",
+    the wg0 ULA, where confconsole's usage screen showed the public
+    2804:... of eth0 (2026-10-03). The two pickers of banner.sh rank the
+    whole table ip prints: a physical interface before a wg*, tun* or
+    tap* overlay, a public address (2000::/3; outside RFC 1918) before a
+    private one, a deprecated or temporary address last, the
+    lowest-numbered interface first, then confconsole's order on one
+    interface, static before dynamic. An address alone, whatever it is,
+    is still printed; IPv4 keeps the first address when nothing public
+    exists. confconsole gets it right by asking ip for the default
+    route's interface alone (ifutil.get_ipv6conf on _get_default_nic),
+    a Python picker the bash drop-in does not share. Sixteen bats tests
+    with recorded ip output.
+
+ -- Marcos Méndez <mendez.foto@gmail.com>  Fri, 03 Oct 2026 12:00:00 +0000
+
 keel-core-19.0 (6) keel; urgency=low
 
   * Console banner: the drop-ins measured below the banner are listed as

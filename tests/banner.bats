@@ -975,6 +975,189 @@ OUT
     [ "$status" -eq 1 ]
 }
 
+@test "pick_ipv6: the public address on eth0 is preferred over the ULA of a WireGuard overlay" {
+    # a Keel Web machine with the wireguard overlay (2026-10-03) printed
+    # "IPv6 Web: http://[fd11:a58a:88ef::1]", the wg0 address, which no
+    # one but a peer can reach
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP qlen 1000
+    inet6 2804:14c:5bb1:8a00::1/64 scope global dynamic mngtmpaddr
+       valid_lft 86213sec preferred_lft 14213sec
+3: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 qdisc noqueue state UNKNOWN qlen 1000
+    inet6 fd11:a58a:88ef::1/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$status" -eq 0 ]
+    [ "$output" = 2804:14c:5bb1:8a00::1 ]
+}
+
+@test "pick_ipv6: a ULA on a physical interface is preferred over a public one on an overlay" {
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 fd42:b2:0:1::98/64 scope global
+       valid_lft forever preferred_lft forever
+3: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 state UNKNOWN qlen 1000
+    inet6 2001:db8:77::1/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$output" = fd42:b2:0:1::98 ]
+}
+
+@test "pick_ipv6: a public address is preferred over a ULA on the same interface" {
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 fd42:b2:0:1::98/64 scope global
+       valid_lft forever preferred_lft forever
+    inet6 2001:db8:1::10/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$output" = 2001:db8:1::10 ]
+}
+
+@test "pick_ipv6: a ULA alone is still printed" {
+    # the LXC boot test's bridge hands out fd42:b2:0:1::/64 and nothing else
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0@if9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP qlen 1000
+    inet6 fd42:b2:0:1::98/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$status" -eq 0 ]
+    [ "$output" = fd42:b2:0:1::98 ]
+}
+
+@test "pick_ipv6: an address on an overlay alone is still printed" {
+    local iface
+    for iface in wg0 tun0 tap0; do
+        run keel_banner_pick_ipv6 <<OUT
+3: $iface: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 state UNKNOWN qlen 1000
+    inet6 fd11:a58a:88ef::1/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+        [ "$status" -eq 0 ]
+        [ "$output" = fd11:a58a:88ef::1 ]
+    done
+}
+
+@test "pick_ipv6: on eth0 the stable address is taken, not the temporary one, whatever their order" {
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2804:14c:5bb1:8a00:a1b2:c3d4:e5f6:789a/64 scope global temporary dynamic
+       valid_lft 86213sec preferred_lft 14213sec
+    inet6 2804:14c:5bb1:8a00:5054:ff:fe12:3456/64 scope global dynamic mngtmpaddr
+       valid_lft 86213sec preferred_lft 14213sec
+OUT
+    [ "$output" = 2804:14c:5bb1:8a00:5054:ff:fe12:3456 ]
+}
+
+@test "pick_ipv6: a deprecated address is passed over for one still preferred" {
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2001:db8:1::10/64 scope global deprecated dynamic
+       valid_lft 86213sec preferred_lft 0sec
+    inet6 2001:db8:2::10/64 scope global dynamic
+       valid_lft 86213sec preferred_lft 14213sec
+OUT
+    [ "$output" = 2001:db8:2::10 ]
+}
+
+@test "pick_ipv6: two physical interfaces, the lowest-numbered one wins" {
+    run keel_banner_pick_ipv6 <<'OUT'
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2001:db8:2::20/64 scope global
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2001:db8:1::10/64 scope global dynamic mngtmpaddr
+       valid_lft 86213sec preferred_lft 14213sec
+OUT
+    [ "$output" = 2001:db8:1::10 ]
+}
+
+@test "pick_ipv6: two physical interfaces, a temporary address on the first yields to the second" {
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2001:db8:1::f00/64 scope global temporary dynamic
+       valid_lft 86213sec preferred_lft 14213sec
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 2001:db8:2::20/64 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$output" = 2001:db8:2::20 ]
+}
+
+@test "pick_ipv6: an address that is neither public nor a ULA ranks below both" {
+    # 2002::/16 (6to4) is in 2000::/3 and counts as public
+    run keel_banner_pick_ipv6 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet6 fec0::1/64 scope global
+       valid_lft forever preferred_lft forever
+    inet6 fd42:b2:0:1::98/64 scope global
+       valid_lft forever preferred_lft forever
+    inet6 2002:c000:204::1/48 scope global
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$output" = 2002:c000:204::1 ]
+}
+
+@test "pick_ipv4: a public address is preferred over an RFC 1918 one on a WireGuard overlay" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 198.51.100.10/24 brd 198.51.100.255 scope global eth0
+       valid_lft forever preferred_lft forever
+3: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 state UNKNOWN qlen 1000
+    inet 10.44.0.1/24 scope global wg0
+       valid_lft forever preferred_lft forever
+OUT
+    [ "$output" = 198.51.100.10 ]
+}
+
+@test "pick_ipv4: the overlay's address is skipped even when it comes first" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 state UNKNOWN qlen 1000
+    inet 10.44.0.1/24 scope global wg0
+3: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 10.0.3.98/24 brd 10.0.3.255 scope global eth0
+OUT
+    [ "$output" = 10.0.3.98 ]
+}
+
+@test "pick_ipv4: a public address is preferred over a private one when both exist" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 192.168.1.10/24 brd 192.168.1.255 scope global eth0
+    inet 172.16.5.10/16 brd 172.16.255.255 scope global secondary eth0
+    inet 203.0.113.10/24 brd 203.0.113.255 scope global secondary eth0
+OUT
+    [ "$output" = 203.0.113.10 ]
+}
+
+@test "pick_ipv4: private addresses alone keep the first, as before" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 10.0.3.98/24 brd 10.0.3.255 scope global eth0
+3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 192.168.1.10/24 brd 192.168.1.255 scope global eth1
+OUT
+    [ "$output" = 10.0.3.98 ]
+}
+
+@test "pick_ipv4: 172.32.0.0 is not RFC 1918" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP qlen 1000
+    inet 172.31.255.10/16 scope global eth0
+    inet 172.32.0.10/16 scope global secondary eth0
+OUT
+    [ "$output" = 172.32.0.10 ]
+}
+
+@test "pick_ipv4: an address on an overlay alone is still printed" {
+    run keel_banner_pick_ipv4 <<'OUT'
+2: tun0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1500 state UNKNOWN qlen 500
+    inet 10.8.0.2/24 scope global tun0
+OUT
+    [ "$status" -eq 0 ]
+    [ "$output" = 10.8.0.2 ]
+}
+
 # what the overlay installs
 
 @test "the marks are read from /etc/keel unless told otherwise" {

@@ -78,12 +78,12 @@ unit number.
 | Recipe (`Makefile`, `plan/main`, `conf.d/main`, `overlay`) | builds identically to upstream: the M0 gate run of 2026-09-26 built this repository at 24c82ee and upstream core at the same commit from the same bootstrap; 412 identical packages, 49 of 33,684 files differ, all install-time state (keys, timestamps, pids, Perl hash order), none traceable to a source difference; the squashfs is bit-identical across two packings and the ISO too with the project's fab | `docs/m0-gate.md` and `docs/m0-gate-run-2026-09-26.md` of the keel project |
 | Boot test | passes on the self-hosted runner `keel-lxc-1` since 2026-09-26: `keel pull` 3 s from the mirror, `keel verify` exit 9, assemble 13 s, boot and first boot 10 s, `keel diff` 6 same, 0 drift, 2 unknown (`instance.fqdn` and the IPv6 method, neither readable from an offline root, exit 13); 30 s for the whole job. Three upstream hooks report an error in a container without a hub account and without the appliance's certificate tooling (`15regen-sslcert`, `29tagid`, `95secupdates`); the run continues and the machine matches the spec | `tests/boot-test.sh`, `test-appliance.yml` |
 | `tests/lib/boot-test-lib.sh` | 100 percent (109 of 109 lines, 30 bats tests, kcov 43) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
-| `overlay/usr/lib/keel/banner.sh` | 100 percent (199 of 199 lines, 127 bats tests, kcov 43), measured on 2026-10-02 with the Web line taken from services.txt and the rest of the login message counted when the mark is chosen | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
+| `overlay/usr/lib/keel/banner.sh` | 100 percent (227 of 227 lines, 143 bats tests, kcov 43), measured on 2026-10-03 with the address pickers ranking the whole table ip prints (physical interface before an overlay, public before private) | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `conf.d/main` | 100 percent (14 of 14 lines, 13 bats tests, kcov 43), measured on 2026-09-30 with the CrowdSec identity (tracker#47): run against a scratch tree through `KEEL_CONF_ROOT` | `COVERAGE_THRESHOLD=100 tests/coverage.sh` |
 | `packages/keel-core` | built with `dpkg-buildpackage` and linted clean with lintian on trixie; its fields, files and manifest read back by 15 bats tests | `tests/package.bats`, the check `packages / build` |
 
 Baseline for the threshold in `.github/workflows/tests.yml`: 100, the
-measured number of the three project-authored shell files (170 bats tests
+measured number of the three project-authored shell files (186 bats tests
 in all); it
 is only ever raised. `tests/coverage.sh` measures each library against the
 bats file that exercises it and fails when any one is below the
