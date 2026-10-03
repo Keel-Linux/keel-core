@@ -1,3 +1,13 @@
+keel-core-19.0 (8) keel; urgency=low
+
+  * Release of 2026-10-03 (step 10): keel-core 0.1.2, inithooks 2.3.6+keel21,
+    confconsole 2.2.3+keel14, turnkey-sysinfo 1.1.0+keel2, and common with
+    /etc/keel_version (common#5), container units (common#34) and no stale
+    127.0.1.1 at export (common#35). 19.0-7 is published, so this build
+    needs its own revision.
+
+ -- Keel Linux maintainers <admin@keellinux.org>  Sat, 03 Oct 2026 10:20:08 +0000
+
 keel-core-19.0 (7) keel; urgency=low
 
   * Console banner: the address an operator can reach. A Keel Web machine
