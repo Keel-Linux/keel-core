@@ -463,22 +463,104 @@ keel_banner_render() {
     printf '%s\n' "${address_lines[@]}"
 }
 
-# keel_banner_pick_ipv6
-# stdin: the output of "ip -6 addr show IFACE scope global", the probe
-# confconsole (ifutil._list_ipv6_global) and keel inspect
-# (keel.spec.runtime.live_ipv6) both read. Prints the address that stays
-# reachable, in confconsole's order: a static address before a SLAAC or
-# DHCPv6 one, a privacy address last. Returns 1 when there is none.
-keel_banner_pick_ipv6() {
-    local keyword value rest rank best="" best_rank=9
+# The address probe. Both pickers read the whole table "ip -N addr show
+# scope global" prints, every interface, and print the one address an
+# operator can reach the machine at. confconsole's usage screen asks a
+# different question of ip, the addresses of the default route's interface
+# alone (ifutil.get_ipv6conf on confconsole._get_default_nic), which is why
+# it showed the public address on a machine whose banner showed the
+# WireGuard overlay's; the banner has no route lookup and ranks instead.
+#
+# An address is ranked by, in this order: the interface it is on, a
+# physical one before a wg*, tun* or tap* overlay (an overlay's address is
+# reachable by its peers alone); its kind, public (IPv6 2000::/3, IPv4
+# outside RFC 1918) before private; whether it is still preferred, with a
+# deprecated one and then a temporary (privacy) one last; the interface's
+# number; and, on one interface, confconsole's order, a static address
+# before a SLAAC or DHCPv6 one, then the order ip printed them. The first
+# of the ranking wins; an address alone, whatever it is, is still printed.
+
+# keel_banner_iface_of HEADER_NAME
+# The interface name of the header line "3: wg0: <...>" or "2: eth0@if9:"
+# as ip prints it in a container: the name without the colon and the
+# peer suffix.
+keel_banner_iface_of() {
+    local name=${1%:}
+    printf '%s\n' "${name%%@*}"
+}
+
+# keel_banner_is_overlay IFACE
+# True for a WireGuard, tun or tap interface, which an operator does not
+# reach the machine through unless they are a peer of it.
+keel_banner_is_overlay() {
+    case $1 in
+        wg*|tun*|tap*) return 0 ;;
+    esac
+    return 1
+}
+
+# keel_banner_ipv6_kind ADDRESS
+# 0 for a global unicast address (2000::/3), 1 for a ULA (fc00::/7), 2 for
+# whatever else ip reports with scope global.
+keel_banner_ipv6_kind() {
+    case $1 in
+        [23]*) printf '0\n' ;;
+        f[cd]*) printf '1\n' ;;
+        *) printf '2\n' ;;
+    esac
+}
+
+# keel_banner_ipv4_kind ADDRESS
+# 1 for an RFC 1918 address (10/8, 172.16/12, 192.168/16), 0 otherwise.
+keel_banner_ipv4_kind() {
+    local a b
+    IFS=. read -r a b _ <<< "$1"
+    local kind=0
+    case "$a.$b" in
+        10.*|192.168) kind=1 ;;
+        172.*) if [ "$b" -ge 16 ] && [ "$b" -le 31 ]; then kind=1; fi ;;
+    esac
+    printf '%d\n' "$kind"
+}
+
+# keel_banner_pick FAMILY
+# stdin: the output of "ip -4|-6 addr show scope global". FAMILY is inet
+# or inet6. Prints the best address by the ranking above; returns 1 when
+# there is none. The rank is a string of fixed-width fields compared as
+# text, so the lowest sorts first; it is built in two statements because
+# kcov counts a command continued over two lines on one of them only.
+keel_banner_pick() {
+    local family=$1 keyword value rest
+    local iface="" index=0 order=0 rank best="" best_rank=""
+    local overlay kind stale dynamic
     while read -r keyword value rest; do
-        [ "$keyword" = inet6 ] || continue
-        rank=0
-        case " $rest " in
-            *" temporary "*) rank=2 ;;
-            *" dynamic "*) rank=1 ;;
+        case $keyword in
+            [0-9]*:)
+                index=${keyword%:}
+                iface=$(keel_banner_iface_of "$value")
+                continue
+                ;;
         esac
-        if [ "$rank" -lt "$best_rank" ]; then
+        [ "$keyword" = "$family" ] || continue
+        overlay=0
+        if keel_banner_is_overlay "$iface"; then overlay=1; fi
+        if [ "$family" = inet6 ]; then
+            kind=$(keel_banner_ipv6_kind "${value%%/*}")
+        else
+            kind=$(keel_banner_ipv4_kind "${value%%/*}")
+        fi
+        stale=0 dynamic=0
+        case " $rest " in
+            *" deprecated "*) stale=2 ;;
+            *" temporary "*) stale=1 ;;
+        esac
+        case " $rest " in
+            *" dynamic "*) dynamic=1 ;;
+        esac
+        printf -v rank '%d%d%d' "$overlay" "$kind" "$stale"
+        printf -v rank '%s%08d%d%06d' "$rank" "$index" "$dynamic" "$order"
+        order=$((order + 1))
+        if [ -z "$best_rank" ] || [[ $rank < $best_rank ]]; then
             best=${value%%/*}
             best_rank=$rank
         fi
@@ -487,16 +569,17 @@ keel_banner_pick_ipv6() {
     printf '%s\n' "$best"
 }
 
+# keel_banner_pick_ipv6
+# stdin: the output of "ip -6 addr show scope global". Prints the address
+# that stays reachable, or returns 1 when there is none.
+keel_banner_pick_ipv6() {
+    keel_banner_pick inet6
+}
+
 # keel_banner_pick_ipv4
-# stdin: the output of "ip -4 addr show IFACE scope global". Prints the
-# first address; returns 1 when the appliance has no IPv4, which is the
-# normal case and not an error.
+# stdin: the output of "ip -4 addr show scope global". Prints the address
+# an operator reaches; returns 1 when the appliance has no IPv4, which is
+# the normal case and not an error.
 keel_banner_pick_ipv4() {
-    local keyword value _
-    while read -r keyword value _; do
-        [ "$keyword" = inet ] || continue
-        printf '%s\n' "${value%%/*}"
-        return 0
-    done
-    return 1
+    keel_banner_pick inet
 }
