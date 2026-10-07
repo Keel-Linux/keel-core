@@ -1,3 +1,11 @@
+keel-core-19.0 (9) keel; urgency=low
+
+  * Release of 2026-10-07 (step 11): keel-core 0.1.3 with the service VIP
+    overlay, keel 0.20.0, keel-overlay-vip 0.1.1, inithooks 2.3.6+keel23,
+    confconsole 2.2.3+keel15.
+
+ -- Keel Linux maintainers <admin@keellinux.org>  Wed, 07 Oct 2026 23:25:09 +0000
+
 keel-core-19.0 (8) keel; urgency=low
 
   * Release of 2026-10-03 (step 10): keel-core 0.1.2, inithooks 2.3.6+keel21,

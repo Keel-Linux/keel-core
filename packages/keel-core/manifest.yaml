@@ -9,6 +9,9 @@ overlays:
   wireguard: {simple: disabled, cloud_simple: enabled,  cloud_advanced: enabled}
   etcd:      {simple: disabled, cloud_simple: disabled, cloud_advanced: enabled}
   crowdsec:  {simple: disabled, cloud_simple: enabled, cloud_advanced: enabled}
+  # the service VIP of a replicated pair (0049): off in every mode; keel
+  # enables it only on a node whose spec declares appliance.vip
+  vip:       {simple: disabled, cloud_simple: disabled, cloud_advanced: disabled}
 processes:
   - name: sshd
     unit: ssh.service
