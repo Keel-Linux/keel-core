@@ -1,0 +1,4 @@
+# Security scan baseline (keel-linux/.github, security-scan.yml): findings
+# that were read and are not a risk, one per line, the fingerprint and why.
+shellcheck:SC2034:overlay/etc/update-motd.d/00-keel-banner:0c51237acdff shell lint, not a security risk: a variable read by a sourcing script or left unused
+shellcheck:SC2034:overlay/etc/update-motd.d/00-keel-banner:35d2d96aaaf4 shell lint, not a security risk: a variable read by a sourcing script or left unused
