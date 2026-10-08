@@ -36,10 +36,10 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
     [ "$output" = $'Package: keel-core\nArchitecture: all' ]
 }
 
-@test "it depends on the four Core overlays and on the keel of step 3" {
+@test "it depends on the five Core overlays and on the keel of the VIP" {
     run dpkg-deb -f "$DEB" Depends
     [ "$status" -eq 0 ]
-    [ "$output" = "keel (>= 0.13.0), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-wireguard" ]
+    [ "$output" = "keel (>= 0.20.0), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-vip (>= 0.1.1), keel-overlay-wireguard" ]
 }
 
 @test "the manifest is installed as /usr/share/keel/appliances/core.yaml" {
@@ -120,9 +120,14 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
     [ "$output" = "{'simple': 'disabled', 'cloud_simple': 'enabled', 'cloud_advanced': 'enabled'}" ]
 }
 
-@test "manifest: exactly the four overlays of Core" {
+@test "manifest: vip is disabled in every mode, keel enables it only for appliance.vip" {
+    run manifest 'm["overlays"]["vip"]'
+    [ "$output" = "{'simple': 'disabled', 'cloud_simple': 'disabled', 'cloud_advanced': 'disabled'}" ]
+}
+
+@test "manifest: exactly the five overlays of Core" {
     run manifest 'sorted(m["overlays"])'
-    [ "$output" = "['crowdsec', 'etcd', 'installer', 'wireguard']" ]
+    [ "$output" = "['crowdsec', 'etcd', 'installer', 'vip', 'wireguard']" ]
 }
 
 # TurnKey removed the web shell (shellinabox, port 12320) in 18.0, and

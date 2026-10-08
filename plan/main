@@ -2,9 +2,10 @@
 
 /* The appliance manifest of Keel Core (handbook decision 0041, step 4 of
    its first implementation), from packages/keel-core. It depends on the
-   four overlays, which bring keel, inithooks and confconsole, trixie's
-   wireguard-tools (issue #15), etcd-server, crowdsec and
-   crowdsec-firewall-bouncer, and leave etcd and CrowdSec disabled, the
+   five overlays, which bring keel, inithooks and confconsole, trixie's
+   wireguard-tools (issue #15), etcd-server, crowdsec,
+   crowdsec-firewall-bouncer and the VIP units, and leave etcd, CrowdSec
+   and the VIP disabled, the
    state of a simple installation. conf.d/main deletes the identity
    CrowdSec's packages make at installation. */
 keel-core
