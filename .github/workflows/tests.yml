@@ -1,46 +1,18 @@
+# Light CI on GitHub-hosted runners, for pull requests on the GitHub mirror
+# (decision 0056). The full CI is .forgejo/workflows on git.pop.coop, and
+# .forgejo/workflows/tests.yml has the notes on each job.
+#
+# Jobs on Forgejo only (no GitHub-hosted version): appliance.
 name: tests
+
 on:
   pull_request:
-  push:
-    branches: [master]
+
+permissions:
+  contents: read
+
 jobs:
   tests:
-    # Unit tests of the boot test's helper library (tests/lib/boot-test-lib.sh,
-    # decision 0004): bats under kcov through tests/coverage.sh. Threshold is
-    # the number measured in COVERAGE.md (100 percent, 97 of 97 lines,
-    # 2026-09-26) and is only ever raised (decision 0006). This job produces
-    # the check "tests / coverage", the required status on master.
-    uses: keel-linux/.github/.github/workflows/test-shell.yml@main
+    uses: keel-linux/.github/.github/workflows/github-test-shell.yml@main
     with:
       threshold: 100
-  appliance:
-    # The boot test (org-plan section 1): the core layer is fetched from
-    # https://mirror.keellinux.org/layers, verified, assembled into a scratch
-    # rootfs, booted in LXC and checked by tests/boot-test.sh, on the
-    # self-hosted runner. Nothing is built there; the build host publishes
-    # the layer (docs/releases-host.md of the keel repository). So what boots
-    # is the layer the mirror publishes, never this branch: a pull request
-    # that changes the recipe is not exercised by this check, which is why
-    # the reusable job is called boot-published-layer.
-    #
-    # test-appliance.yml targets the labels "self-hosted, keel-lxc"; a job
-    # aimed at a label no runner carries stays queued until GitHub cancels it
-    # after 24 hours, so the reusable workflow's contract is that callers gate
-    # on the organization variable KEEL_LXC_RUNNER (docs/ci-cd.md section 5 of
-    # the keel repository). While it is "false" this job is skipped and
-    # produces no check. With it "true" the check
-    # "appliance / boot-published-layer" appears and is required on master.
-    # The job id is part of that check name, so the rename of 2026-09-28 came
-    # with a rename of the protection rule. GitHub fails closed: a required
-    # context that is never reported leaves a pull request blocked waiting
-    # for a status that never arrives, so leaving the rule on the old name
-    # would have locked this repository rather than opened it, and
-    # enforce_admins is true here. A layer that has never been published
-    # fails this job now instead of passing it.
-    if: vars.KEEL_LXC_RUNNER == 'true'
-    uses: keel-linux/.github/.github/workflows/test-appliance.yml@main
-    with:
-      appliance: core
-      # core is the rootfs layer at the bottom of every chain.
-      parent: ""
-      timeout: 60
