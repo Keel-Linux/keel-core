@@ -1,3 +1,12 @@
+keel-core-19.0 (11) keel; urgency=low
+
+  * Stable 1, the first stable release (handbook docs/releases/stable-1-plan.md).
+    The image is built on the stable track: it reads trixie of
+    archive.keellinux.org and not trixie-testing. It carries keel 0.23.49.
+    The image has no other change.
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Sat, 24 Oct 2026 18:00:00 +0000
+
 keel-core-19.0 (10) keel; urgency=low
 
   * Release of 2026-10-09 (step 12): the container drops the boot set
