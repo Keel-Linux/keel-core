@@ -16,4 +16,24 @@ define root.build/pre
 		> $O/root.build/etc/crowdsec/online_api_credentials.yaml
 endef
 
+# The image build carries the local inithooks, whose keel-host-keys
+# generates its independent keys in parallel. The plan installs the apt
+# inithooks first; this upgrades it after all packages are in, so the
+# postinst enables the unit and the first boot uses the parallel build.
+define root.build/post
+
+	if ls /root/src/inithooks_*_all.deb >/dev/null 2>&1; then \
+		cp /root/src/inithooks_*_all.deb $O/root.build/tmp/; \
+		fab-chroot $O/root.build 'dpkg -i /tmp/inithooks_*_all.deb'; \
+	fi
+endef
+
+# webmin-fix-modules needs the archives during the build; drop them after
+# the common conf scripts have run. 37 MiB.
+define root.patched/post
+
+	rm -rf $O/root.patched/usr/share/webmin/module-archives
+	rm -rf $O/root.patched/usr/share/webmin/theme-archives
+endef
+
 include $(FAB_PATH)/common/mk/turnkey.mk

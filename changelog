@@ -1,3 +1,21 @@
+keel-core-19.0 (12) keel; urgency=low
+
+  * Boot and size: mask dev-hugepages, dev-mqueue, sys-kernel-debug,
+    sys-kernel-tracing, run-lock and tmp mounts (618 ms), and remove
+    Python test/pydoc/venv (1.7 MiB) and the Webmin module/theme archives
+    (37 MiB, after webmin-fix-modules). The appliance uses none of them.
+
+ -- Keel Linux maintainers <admin@keellinux.org>  Wed, 28 Oct 2026 00:00:00 +0000
+
+keel-core-19.0 (11) keel; urgency=low
+
+  * Boot: systemd-binfmt.service and proc-sys-fs-binfmt_misc.automount
+    are masked in the image. The Core appliance uses no binfmt handler,
+    and the service cost 828 ms in the boot's critical chain. An
+    appliance that later installs qemu-user or wine can unmask them.
+
+ -- Keel Linux maintainers <admin@keellinux.org>  Tue, 27 Oct 2026 00:00:00 +0000
+
 keel-core-19.0 (10) keel; urgency=low
 
   * Release of 2026-10-09 (step 12): the container drops the boot set

@@ -148,3 +148,26 @@ crowdsec_installed() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"FATAL: /etc/crowdsec/local_api_credentials.yaml is still in the image"* ]]
 }
+
+@test "the unused tmpfs and debug mounts are masked" {
+    local unit
+    for unit in dev-hugepages.mount dev-mqueue.mount \
+            sys-kernel-debug.mount sys-kernel-tracing.mount \
+            run-lock.mount tmp.mount; do
+        run bash "$CONF"
+        [ "$status" -eq 0 ]
+        [ -L "$ROOT/etc/systemd/system/$unit" ]
+        [ "$(readlink "$ROOT/etc/systemd/system/$unit")" = /dev/null ]
+    done
+}
+
+@test "the Python test suite, pydoc and venv are removed" {
+    mkdir -p "$ROOT/usr/lib/python3.13/test" \
+             "$ROOT/usr/lib/python3.13/venv"
+    touch "$ROOT/usr/lib/python3.13/pydoc.py"
+    run bash "$CONF"
+    [ "$status" -eq 0 ]
+    [ ! -e "$ROOT/usr/lib/python3.13/test" ]
+    [ ! -e "$ROOT/usr/lib/python3.13/pydoc.py" ]
+    [ ! -e "$ROOT/usr/lib/python3.13/venv" ]
+}
