@@ -48,3 +48,21 @@ done <<'IDENTITY'
 /var/lib/crowdsec/data/crowdsec.db-shm
 /var/lib/crowdsec/pending-registration
 IDENTITY
+
+# systemd-binfmt costs about 0.8 s in the boot's critical chain, and the
+# appliance uses no binfmt handler. Mask the service and its automount in
+# the image; an appliance that later installs qemu-user or wine can
+# unmask them. A symlink to /dev/null is systemd's mask, and it works in
+# the build tree as it does in the chroot.
+mkdir -p "$root/etc/systemd/system"
+ln -sfn /dev/null "$root/etc/systemd/system/systemd-binfmt.service"
+ln -sfn /dev/null "$root/etc/systemd/system/proc-sys-fs-binfmt_misc.automount"
+
+# The Core appliance uses no hugepages, POSIX mqueue, debugfs or tracefs.
+# The four mounts cost 113 + 112 + 94 + 96 ms in the boot; mask them.
+ln -sfn /dev/null "$root/etc/systemd/system/dev-hugepages.mount"
+ln -sfn /dev/null "$root/etc/systemd/system/dev-mqueue.mount"
+ln -sfn /dev/null "$root/etc/systemd/system/sys-kernel-debug.mount"
+ln -sfn /dev/null "$root/etc/systemd/system/sys-kernel-tracing.mount"
+ln -sfn /dev/null "$root/etc/systemd/system/run-lock.mount"
+ln -sfn /dev/null "$root/etc/systemd/system/tmp.mount"

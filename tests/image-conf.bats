@@ -148,3 +148,15 @@ crowdsec_installed() {
     [ "$status" -eq 1 ]
     [[ "$output" == *"FATAL: /etc/crowdsec/local_api_credentials.yaml is still in the image"* ]]
 }
+
+@test "the unused binfmt and tmpfs/debug mounts are masked" {
+    run bash "$CONF"
+    [ "$status" -eq 0 ]
+    local unit
+    for unit in systemd-binfmt.service proc-sys-fs-binfmt_misc.automount \
+            dev-hugepages.mount dev-mqueue.mount sys-kernel-debug.mount \
+            sys-kernel-tracing.mount run-lock.mount tmp.mount; do
+        [ -L "$ROOT/etc/systemd/system/$unit" ]
+        [ "$(readlink "$ROOT/etc/systemd/system/$unit")" = /dev/null ]
+    done
+}
