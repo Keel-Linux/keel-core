@@ -1,3 +1,11 @@
+keel-core-19.0 (12) keel; urgency=low
+
+  * Boot: mask systemd-binfmt and its automount, dev-hugepages,
+    dev-mqueue, sys-kernel-debug, sys-kernel-tracing, run-lock and tmp.
+    The appliance uses none of them.
+
+ -- Keel Linux maintainers <admin@keellinux.org>  Wed, 28 Oct 2026 00:00:00 +0000
+
 keel-core-19.0 (11) keel; urgency=low
 
   * Stable 1, the first stable release (handbook docs/releases/stable-1-plan.md).
