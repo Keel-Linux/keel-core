@@ -4,6 +4,12 @@ name: core
 title: Keel Core
 summary: Debian, the mesh, CrowdSec and the installer (0036)
 base: none
+# The installation modes of 0028 a node of Core can take (0076), and whether
+# Core may be the witness of cloud advanced: a member of the mesh and a voter
+# of etcd with no data and no application (0057, 0076). An appliance built on
+# Core takes its modes; it never takes the witness (keel 0.23.83).
+modes: [simple, cloud_simple, cloud_advanced]
+witness: true
 overlays:
   installer: {simple: enabled,  cloud_simple: enabled,  cloud_advanced: enabled}
   wireguard: {simple: disabled, cloud_simple: enabled,  cloud_advanced: enabled}

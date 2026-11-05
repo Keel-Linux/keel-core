@@ -13,7 +13,7 @@ Vcs-Browser: https://github.com/Keel-Linux/keel-core/tree/master/packages/keel-c
 Package: keel-core
 Architecture: all
 Depends:
- keel (>= 0.20.0),
+ keel (>= 0.23.83),
  keel-overlay-crowdsec,
  keel-overlay-etcd,
  keel-overlay-installer,

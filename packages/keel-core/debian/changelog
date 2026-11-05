@@ -1,3 +1,14 @@
+keel-core (0.1.4) trixie; urgency=medium
+
+  * The manifest names the installation modes of Core and lets Core be the
+    witness of cloud advanced (handbook decision 0076): modes: [simple,
+    cloud_simple, cloud_advanced] and witness: true. The first boot's Role
+    screen offers Witness only on an appliance that says so, and keel
+    0.23.83 is the first that reads both keys, so keel (>= 0.23.83) is a
+    dependency: an older keel refuses them as unknown.
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Thu, 05 Nov 2026 23:36:02 +0000
+
 keel-core (0.1.3) trixie; urgency=medium
 
   * Core carries the service VIP overlay (handbook decision 0049: every
