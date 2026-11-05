@@ -39,7 +39,7 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
 @test "it depends on the five Core overlays and on the keel of the VIP" {
     run dpkg-deb -f "$DEB" Depends
     [ "$status" -eq 0 ]
-    [ "$output" = "keel (>= 0.20.0), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-vip (>= 0.1.1), keel-overlay-wireguard" ]
+    [ "$output" = "keel (>= 0.23.83), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-vip (>= 0.1.1), keel-overlay-wireguard" ]
 }
 
 @test "the manifest is installed as /usr/share/keel/appliances/core.yaml" {
@@ -123,6 +123,11 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
 @test "manifest: vip is disabled in every mode, keel enables it only for appliance.vip" {
     run manifest 'm["overlays"]["vip"]'
     [ "$output" = "{'simple': 'disabled', 'cloud_simple': 'disabled', 'cloud_advanced': 'disabled'}" ]
+}
+
+@test "manifest: Core allows the three modes and may be the witness (0076)" {
+    run manifest 'm["modes"], m["witness"]'
+    [ "$output" = "(['simple', 'cloud_simple', 'cloud_advanced'], True)" ]
 }
 
 @test "manifest: exactly the five overlays of Core" {
