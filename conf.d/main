@@ -66,3 +66,19 @@ ln -sfn /dev/null "$root/etc/systemd/system/sys-kernel-debug.mount"
 ln -sfn /dev/null "$root/etc/systemd/system/sys-kernel-tracing.mount"
 ln -sfn /dev/null "$root/etc/systemd/system/run-lock.mount"
 ln -sfn /dev/null "$root/etc/systemd/system/tmp.mount"
+
+# The postinst of postfix asks debconf for the network protocols, and in a
+# build chroot it finds none: it wrote "inet_protocols = " (empty). Postfix
+# then sent nothing off the machine, so the alert mail of System
+# Notifications never left the node ("status=deferred (all network
+# protocols are disabled)", BR2, 2026-11-06). inet_interfaces stays
+# localhost: this is the protocols of the client, not a listener.
+main_cf="$root/etc/postfix/main.cf"
+[ -f "$main_cf" ] || { echo "no $main_cf: the postfix package of plan/main is not in" >&2; exit 1; }
+if grep -q '^inet_protocols' "$main_cf"; then
+    sed -i 's/^inet_protocols[[:space:]]*=.*/inet_protocols = all/' "$main_cf"
+else
+    echo 'inet_protocols = all' >> "$main_cf"
+fi
+grep -qx 'inet_protocols = all' "$main_cf"
+echo "postfix: inet_protocols = all"

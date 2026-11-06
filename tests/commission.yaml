@@ -61,6 +61,12 @@ instance:
   first_login_wizard: false
 proofs:
   - {secret: root, kind: shadow, user: root}
+  # postfix may send off the machine: the core layer of 2026-11-06 had
+  # "inet_protocols = " (empty), and the alert mail stayed deferred ("all
+  # network protocols are disabled", BR2). The command runs as root.
+  - secret: root
+    kind: command
+    run: 'test "$(postconf -h inet_protocols)" = all && ! postqueue -p | grep -q "network protocols are disabled"'
 # The processes of the manifest (packages/keel-core/manifest.yaml), and
 # Monit, which runs the checks that keel derives from the manifests
 services: [ssh, webmin, postfix, cron, monit]

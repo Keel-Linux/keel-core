@@ -1,3 +1,14 @@
+keel-core-19.0 (13) keel; urgency=low
+
+  * conf.d/main sets inet_protocols = all in /etc/postfix/main.cf and
+    fails the build without that file. The postinst of postfix found no
+    network protocol in the build chroot and wrote an empty value. Postfix
+    then sent nothing off the machine: the alert mail of System
+    Notifications stayed deferred, "all network protocols are disabled"
+    (PostgreSQL and LNPP machines on BR1 and BR2, 2026-11-06).
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Fri, 06 Nov 2026 16:00:00 +0000
+
 keel-core-19.0 (12) keel; urgency=low
 
   * Boot: mask systemd-binfmt and its automount, dev-hugepages,
