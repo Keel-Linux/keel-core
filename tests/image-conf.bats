@@ -22,7 +22,10 @@ IDENTITY=(
 setup() {
     ROOT=$(mktemp -d)
     export KEEL_CONF_ROOT="$ROOT"
-    mkdir -p "$ROOT/etc/wireguard" "$ROOT/etc/systemd/system/multi-user.target.wants"
+    mkdir -p "$ROOT/etc/wireguard" "$ROOT/etc/systemd/system/multi-user.target.wants" "$ROOT/etc/postfix"
+    # what the postinst of postfix writes in a build chroot, where debconf
+    # finds no network protocol (the core layer of 2026-11-06)
+    printf 'myhostname = build\ninet_protocols = \ninet_interfaces = localhost\n' > "$ROOT/etc/postfix/main.cf"
 }
 
 teardown() {
@@ -159,4 +162,31 @@ crowdsec_installed() {
         [ -L "$ROOT/etc/systemd/system/$unit" ]
         [ "$(readlink "$ROOT/etc/systemd/system/$unit")" = /dev/null ]
     done
+}
+
+# The core layer of 2026-11-06 shipped "inet_protocols = " (empty): the
+# postinst of postfix found no protocol in the build chroot. Postfix then
+# sent nothing off the machine ("status=deferred (all network protocols
+# are disabled)", BR2 9366), and the alert mail never left the node.
+@test "postfix may use every network protocol" {
+    run bash "$CONF"
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^inet_protocols' "$ROOT/etc/postfix/main.cf")" -eq 1 ]
+    grep -qx 'inet_protocols = all' "$ROOT/etc/postfix/main.cf"
+    grep -qx 'inet_interfaces = localhost' "$ROOT/etc/postfix/main.cf"
+    [[ "$output" == *"inet_protocols = all"* ]]
+}
+
+@test "a main.cf with no inet_protocols line gets one" {
+    printf 'myhostname = build\n' > "$ROOT/etc/postfix/main.cf"
+    run bash "$CONF"
+    [ "$status" -eq 0 ]
+    grep -qx 'inet_protocols = all' "$ROOT/etc/postfix/main.cf"
+}
+
+@test "an image with no postfix main.cf fails the build" {
+    rm "$ROOT/etc/postfix/main.cf"
+    run bash "$CONF"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"/etc/postfix/main.cf"* ]]
 }
