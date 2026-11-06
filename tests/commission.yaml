@@ -80,3 +80,53 @@ screenshots:
     url: /
     login: {user_field: 'input[name=user]', user: root, password_field: 'input[name=pass]', secret: root, submit: 'button[type=submit]'}
     wait: 8
+
+# The cloud modes (decision 0076): cloud simple is a primary on BR1 and a
+# replica on BR2. The prompts are the titles of the confconsole screens,
+# which are data here: a new title is a change of this file, not of
+# keel-commission. A node's answer of the id mode replaces the question
+# mode above (keel-commission, .github#45). The vm-iso pass takes the
+# default screens of tkl-installer (no vm section).
+cloud:
+  capture:
+    # keel1: an invite without a VIP, keel2: one that carries it (keel 0.23.83)
+    invite: 'keel[12]:[A-Za-z0-9_.~+/=-]+'
+  # the screens on which a node waits for another: no key while they are up
+  waits: [Waiting for the nodes]
+  # the proofs across the pair. Core pairs no service: keel mesh invite says
+  # "This node pairs nothing, so the line carries no service address", and
+  # keel vip status says "vip: none" on both nodes (BR1 and BR2,
+  # 2026-11-06). Cloud simple of Core is the mesh: each node has the other
+  # as its WireGuard peer, with a recent handshake, and the overlay
+  # carries traffic across the sites.
+  checks:
+    - {id: mesh-peer, at: all, run: 'keel mesh status', match: 'handshake [0-9]+ s ago', count: 2}
+    - id: mesh-ping
+      at: all
+      run: 'ping -6 -c 3 -W 5 "$(wg show wg0 allowed-ips | awk "{print \$2}" | cut -d/ -f1)"'
+      match: ' 0% packet loss'
+      count: 2
+    - {id: no-vip, at: all, run: 'keel vip status', match: 'vip: none', count: 2}
+    # no unit failed on either node: the cloud modes start overlays (anubis,
+    # coraza, crowdsec, syncthing) that services: does not name
+    - {id: no-failed-units, at: all, run: 'systemctl --failed --no-legend --plain | wc -l', match: '^0$', count: 2}
+nodes:
+  - name: primary
+    site: br1
+    mode: cloud_simple
+    role: primary
+    # the hotkeys of the menus (the first letter of an item): an arrow key is
+    # an escape sequence, and the console of a container can hand dialog its
+    # ESC alone, which cancels the screen (BR1, 2026-11-06)
+    answers:
+      - {id: mode, prompt: Installation mode, keys: 'C{ret}'}
+      - {id: role, prompt: Role of this node, keys: 'P{ret}'}
+      - {id: invite, prompt: Invite a node, keys: '{ret}'}
+  - name: replica
+    site: br2
+    mode: cloud_simple
+    role: replica
+    answers:
+      - {id: mode, prompt: Installation mode, keys: 'C{ret}'}
+      - {id: role, prompt: Role of this node, keys: 'R{ret}'}
+      - {id: join, prompt: Join a mesh, keys: '{invite:1}{ret}'}
