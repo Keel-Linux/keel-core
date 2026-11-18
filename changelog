@@ -1,3 +1,13 @@
+keel-core-19.0 (14) keel; urgency=medium
+
+  * A new build with keel 0.23.97 and confconsole 2.2.3+keel25 from the
+    Keel archive. keel 0.23.97 chooses the only pair engine of the machine
+    when Redis is also on it (keel#304, keel#305). confconsole
+    2.2.3+keel25 refuses a pair role when the machine has no pair engine
+    (confconsole#42). No other file of this repository changed.
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Wed, 18 Nov 2026 15:00:00 +0000
+
 keel-core-19.0 (13) keel; urgency=low
 
   * conf.d/main sets inet_protocols = all in /etc/postfix/main.cf and
