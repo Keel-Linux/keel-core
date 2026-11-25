@@ -66,7 +66,10 @@ Features:
 
 - **Web management interface (WebUI)** (`Webmin`_):
    
-  - Listens on port 12321 (uses SSL).
+  - Listens on port 12321 (uses SSL), on the access network of the
+    administrators only (decision 0098): add a computer in confconsole,
+    Instance > Administrator access, then open https://[ACCESS ADDRESS]:12321/
+    on that computer.
   - Provides fully interactive shell in your web browser.
   - Modern responsive theme: 'Authentic'.
   - Network modules:

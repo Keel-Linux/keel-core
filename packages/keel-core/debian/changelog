@@ -1,3 +1,16 @@
+keel-core (0.1.5) trixie; urgency=medium
+
+  * Webmin answers only on the access network of the administrators
+    (handbook decision 0098): its port, 12321, changes from expose: public
+    to expose: access in the manifest. keel opens it on the keel-access
+    interface, to the computers enrolled with keel access invite, and on
+    no other interface. On a node with no network.access, 12321 is open
+    nowhere: the administrator adds a computer from confconsole first.
+    keel 0.23.104 is the first keel that knows the class access, so keel
+    (>= 0.23.104) is a dependency: an older keel refuses the manifest.
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Wed, 25 Nov 2026 18:00:00 +0000
+
 keel-core (0.1.4) trixie; urgency=medium
 
   * The manifest names the installation modes of Core and lets Core be the

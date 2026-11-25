@@ -36,10 +36,12 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
     [ "$output" = $'Package: keel-core\nArchitecture: all' ]
 }
 
-@test "it depends on the five Core overlays and on the keel of the VIP" {
+# keel 0.23.104 is the first keel that knows the exposure class access
+# (decision 0098): an older keel refuses the manifest
+@test "it depends on the five Core overlays and on the keel of the access class" {
     run dpkg-deb -f "$DEB" Depends
     [ "$status" -eq 0 ]
-    [ "$output" = "keel (>= 0.23.83), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-vip (>= 0.1.1), keel-overlay-wireguard" ]
+    [ "$output" = "keel (>= 0.23.104), keel-overlay-crowdsec, keel-overlay-etcd, keel-overlay-installer, keel-overlay-vip (>= 0.1.1), keel-overlay-wireguard" ]
 }
 
 @test "the manifest is installed as /usr/share/keel/appliances/core.yaml" {
@@ -144,9 +146,12 @@ print(eval(sys.argv[2]))' "$PACKAGE_DIR/manifest.yaml" "$1"
     [ "$output" = "[('sshd', 'ssh.service'), ('webmin', 'webmin.service'), ('postfix', 'postfix.service')]" ]
 }
 
-@test "manifest: 22 and 12321 public, 25 on the IPv4 loopback" {
+# Webmin answers only on the access network of the administrators
+# (decision 0098): keel opens 12321 on keel-access and on no other
+# interface, and nowhere on a node with no network.access
+@test "manifest: 22 public, 12321 on the access network, 25 on the IPv4 loopback" {
     run manifest '[(l.get("address"), l["port"], l["expose"]) for p in m["processes"] for l in p["listen"]]'
-    [ "$output" = "[(None, 22, 'public'), (None, 12321, 'public'), ('127.0.0.1', 25, 'loopback')]" ]
+    [ "$output" = "[(None, 22, 'public'), (None, 12321, 'access'), ('127.0.0.1', 25, 'loopback')]" ]
 }
 
 @test "manifest: the ssh, HTTPS and SMTP probes, each restarting" {
