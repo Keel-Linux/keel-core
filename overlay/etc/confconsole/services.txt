@@ -1,5 +1,4 @@
-Webmin:     https://[$ipaddr6]:12321
+Admin:      the access network: confconsole, Instance, Admin access
 SSH/SFTP:   root@$ipaddr6 (port 22)
 
-Webmin:     https://$ipaddr:12321
 SSH/SFTP:   root@$ipaddr (port 22)
