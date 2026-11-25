@@ -191,8 +191,18 @@ teardown() {
 # whether the appliance serves the web
 #
 # services.txt is the declaration confconsole's usage screen reads, and each
-# layer of the chain installs its own over its base's: Core's lists Webmin
-# and SSH, Keel Web's and every web application's start with a Web line.
+# layer of the chain installs its own over its base's: Core's lists the
+# access network and SSH, Keel Web's and every web application's start
+# with a Web line.
+
+# The administration services answer only on the access network (decision
+# 0098): Core's services name it and no public port of them
+@test "services: Core's name the access network and no public admin port" {
+    run grep -c 12321 "$BATS_TEST_DIRNAME/../overlay/etc/confconsole/services.txt"
+    [ "$output" = 0 ]
+    run grep -c "access network" "$BATS_TEST_DIRNAME/../overlay/etc/confconsole/services.txt"
+    [ "$output" = 1 ]
+}
 
 @test "web_scheme: Core's services name no web server" {
     run keel_banner_web_scheme < "$BATS_TEST_DIRNAME/../overlay/etc/confconsole/services.txt"
@@ -203,7 +213,7 @@ teardown() {
 @test "web_scheme: Keel Web's services name http" {
     run keel_banner_web_scheme <<'TXT'
 Web:        http://[$ipaddr6]
-Webmin:     https://[$ipaddr6]:12321
+Admin:      the access network: confconsole, Instance, Admin access
 SSH/SFTP:   root@$ipaddr6 (port 22)
 
 Web:        http://$ipaddr
@@ -224,7 +234,7 @@ TXT
     run keel_banner_web_scheme <<'TXT'
 Web:        see the documentation
 Web:        ftp://$ipaddr
-Webmin:     https://$ipaddr:12321
+Admin:      the access network: confconsole, Instance, Admin access
 TXT
     [ "$status" -eq 1 ]
     run keel_banner_web_scheme <<'TXT'

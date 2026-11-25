@@ -1,3 +1,14 @@
+keel-core-19.0 (15) keel; urgency=medium
+
+  * Webmin answers only on the access network of the administrators
+    (handbook decision 0098, keel-core 0.1.5). The usage screen of
+    confconsole (/etc/confconsole/services.txt) no longer shows Webmin on
+    the public addresses. It names the access network and the confconsole
+    screen that adds a computer to it: Instance, Admin access. The SSH
+    lines stay.
+
+ -- KeelLinux maintainers <admin@keellinux.org>  Wed, 25 Nov 2026 20:00:00 +0000
+
 keel-core-19.0 (14) keel; urgency=medium
 
   * A new build with keel 0.23.97 and confconsole 2.2.3+keel25 from the

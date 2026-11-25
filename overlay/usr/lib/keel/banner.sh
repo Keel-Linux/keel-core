@@ -228,8 +228,8 @@ keel_banner_is_ipv6() {
 # stdin: confconsole's services.txt, the lines its usage screen shows,
 # which each layer of the chain installs over its base's. Prints http or
 # https, the scheme of the first "Web:" line that names a URL; returns 1
-# when there is none, an appliance with no web server (Core lists Webmin
-# and SSH only).
+# when there is none, an appliance with no web server (Core lists the
+# access network and SSH only).
 keel_banner_web_scheme() {
     local line
     while IFS= read -r line || [ -n "$line" ]; do

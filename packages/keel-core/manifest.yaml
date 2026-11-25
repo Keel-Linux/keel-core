@@ -22,9 +22,12 @@ processes:
   - name: sshd
     unit: ssh.service
     listen: [{port: 22, protocol: tcp, expose: public}]
+  # Webmin answers only on the access network of the administrators
+  # (decision 0098): keel opens 12321 on the keel-access interface, and on
+  # no interface of a node with no network.access (keel >= 0.23.104)
   - name: webmin
     unit: webmin.service
-    listen: [{port: 12321, protocol: tcp, expose: public}]
+    listen: [{port: 12321, protocol: tcp, expose: access}]
   - name: postfix
     unit: postfix.service
     listen: [{address: 127.0.0.1, port: 25, protocol: tcp, expose: loopback}]
